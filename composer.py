@@ -1,7 +1,11 @@
+import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
-import os
 import random
-from pathlib import Path
+import os
+import io
+
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Generador de Collages", layout="centered")
 
 def obtener_color_aleatorio():
     """Genera un color RGB al azar."""
@@ -20,13 +24,11 @@ def dibujar_degradado_aleatorio(lienzo, draw):
         draw.line([(0, y), (ancho, y)], fill=(r, g, b))
 
 def calcular_fuente_uniforme_global(textos, anchos_maximos, nombre_fuente, tamano_inicial, draw):
-    """
-    Calcula el tamaño máximo de fuente que permite que TODOS los textos
-    quepan en sus respectivas columnas, garantizando que todos compartan
-    el mismo tamaño final para mantener la simetría.
-    """
+    """Calcula el tamaño máximo de fuente uniforme."""
     tamano_actual = tamano_inicial
     try:
+        # En Streamlit Cloud (Linux), arialbd.ttf podría no estar disponible. 
+        # Si tienes la fuente, súbela junto al script. Si no, usará la por defecto.
         fuente = ImageFont.truetype(nombre_fuente, tamano_actual)
         
         while tamano_actual > 12:
@@ -34,7 +36,6 @@ def calcular_fuente_uniforme_global(textos, anchos_maximos, nombre_fuente, taman
             for texto, max_ancho in zip(textos, anchos_maximos):
                 bbox = draw.textbbox((0, 0), texto, font=fuente)
                 ancho_texto = bbox[2] - bbox[0]
-                # Dejamos 10px de margen de seguridad para que no queden pegados
                 if ancho_texto > (max_ancho - 10):
                     todos_caben = False
                     break
@@ -49,8 +50,9 @@ def calcular_fuente_uniforme_global(textos, anchos_maximos, nombre_fuente, taman
     except IOError:
         return ImageFont.load_default()
 
-def main():
-    # --- CONFIGURACIONES ESTRICTAS ---
+def generar_collage(datos_imagenes, logo_file):
+    """Función principal que procesa y genera la imagen final en memoria."""
+    # Configuraciones estrictas originales
     CONFIG = {
         'ANCHO_LIENZO': 1600,
         'ALTO_LIENZO': 1147,
@@ -58,73 +60,15 @@ def main():
         'ESPACIADO_X': 24,      
         'MAX_ALTO_IMG': 580,    
         'MAX_ANCHO_TOTAL': 1500,
-        'ARCHIVO_LOGO_JPEG': 'logo.jpeg',
-        'ARCHIVO_FINAL': 'resultado_final_1600x1147.jpeg',
-        'FUENTE_TTF': 'arialbd.ttf',
+        'FUENTE_TTF': 'arialbd.ttf', # Sube este archivo a tu repo si quieres usarla
         'TAMANO_BASE_NOMBRE': 48,
         'TAMANO_BASE_LUGAR': 72
     }
 
-    print("Generando lienzo...")
     lienzo = Image.new('RGB', (CONFIG['ANCHO_LIENZO'], CONFIG['ALTO_LIENZO']))
     draw = ImageDraw.Draw(lienzo)
     dibujar_degradado_aleatorio(lienzo, draw)
 
-    # --- PASO 1: Identificar la carpeta de Descargas del sistema ---
-    ruta_descargas = str(Path.home() / "Downloads")
-    
-    if not os.path.exists(ruta_descargas):
-        print(f"Error: No se pudo localizar la carpeta de Descargas en: {ruta_descargas}")
-        return
-
-    # --- PASO 2: Filtrado y Ordenamiento Único ---
-    extensiones_validas = {'.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'}
-    archivos_a_ignorar = {CONFIG['ARCHIVO_LOGO_JPEG'].lower(), CONFIG['ARCHIVO_FINAL'].lower()}
-    
-    lista_archivos_unicos = []
-    
-    print("\nEscaneando carpeta de Descargas de manera unica...")
-    with os.scandir(ruta_descargas) as entries:
-        for entry in entries:
-            if entry.is_file() and os.path.splitext(entry.name)[1] in extensiones_validas:
-                if entry.name.lower() not in archivos_a_ignorar:
-                    lista_archivos_unicos.append({
-                        'ruta': entry.path,
-                        'mtime': entry.stat().st_mtime,
-                        'nombre': entry.name
-                    })
-
-    if len(lista_archivos_unicos) < 3:
-        print(f"Error: Se requieren al menos 3 imagenes en la carpeta de Descargas. Solo se encontraron {len(lista_archivos_unicos)}.")
-        return
-
-    lista_archivos_unicos.sort(key=lambda x: x['mtime'], reverse=True)
-    imagenes_a_procesar = lista_archivos_unicos[:3]
-    datos_imagenes = []
-        
-    # --- PASO 3: Recopilar datos interactivos ---
-    for item in imagenes_a_procesar:
-        ruta_img = item['ruta']
-        nombre_archivo = item['nombre']
-        nombre_autor = os.path.splitext(nombre_archivo)[0]
-        
-        print(f"\n--- Procesando archivo: {nombre_archivo} ---")
-        print(f"Autor detectado: {nombre_autor}")
-        lugar = input(f"Ingrese el ESTADO o MUNICIPIO para esta imagen: ").strip().upper()
-
-        try:
-            img_original = Image.open(ruta_img).convert("RGB")
-            datos_imagenes.append({
-                'img_obj': img_original,
-                'autor': nombre_autor,
-                'lugar': lugar,
-                'ratio': img_original.width / img_original.height
-            })
-        except Exception as e:
-            print(f"Error al cargar {ruta_img}: {e}")
-            return
-
-    # --- PASO 4: Matemática de dimensiones estricta ---
     suma_ratios = sum(d['ratio'] for d in datos_imagenes)
     espacio_disponible_w = CONFIG['MAX_ANCHO_TOTAL'] - (CONFIG['ESPACIADO_X'] * 2)
     
@@ -138,14 +82,11 @@ def main():
         d['nuevo_ancho'] = int(alto_final_img * d['ratio'])
         d['img_redimensionada'] = d['img_obj'].resize((d['nuevo_ancho'], alto_final_img), Image.Resampling.LANCZOS)
         ancho_total_real += d['nuevo_ancho']
-        
-        # El texto puede usar el ancho de su imagen más el espaciado lateral
         anchos_permitidos_por_columna.append(d['nuevo_ancho'] + CONFIG['ESPACIADO_X'])
     
     ancho_total_real += (CONFIG['ESPACIADO_X'] * 2)
     pos_x_actual = (CONFIG['ANCHO_LIENZO'] - ancho_total_real) // 2
 
-    # --- PASO 5: Cálculo de Tipografía Uniforme Global ---
     autores = [d['autor'] for d in datos_imagenes]
     lugares = [d['lugar'] for d in datos_imagenes]
 
@@ -157,14 +98,12 @@ def main():
         lugares, anchos_permitidos_por_columna, CONFIG['FUENTE_TTF'], CONFIG['TAMANO_BASE_LUGAR'], draw
     )
 
-    # --- PASO 6: Colocación de Imágenes y Textos ---
     max_y_texto_detectado = 0
 
     for d in datos_imagenes:
         lienzo.paste(d['img_redimensionada'], (pos_x_actual, CONFIG['MARGEN_SUPERIOR']))
         centro_img_x = pos_x_actual + (d['nuevo_ancho'] // 2)
 
-        # --- TEXTO: Autor ---
         y_texto_nombre = CONFIG['MARGEN_SUPERIOR'] + alto_final_img + 25
         bbox_nombre = draw.textbbox((0, 0), d['autor'], font=fuente_nombre_global)
         w_nombre = bbox_nombre[2] - bbox_nombre[0]
@@ -172,25 +111,21 @@ def main():
         
         draw.text((centro_img_x - (w_nombre / 2), y_texto_nombre), d['autor'], font=fuente_nombre_global, fill="white")
         
-        # --- TEXTO: Lugar ---
-        y_texto_lugar = y_texto_nombre + h_nombre + 5 # Interlineado cerrado
+        y_texto_lugar = y_texto_nombre + h_nombre + 5 
         bbox_lugar = draw.textbbox((0, 0), d['lugar'], font=fuente_lugar_global)
         w_lugar = bbox_lugar[2] - bbox_lugar[0]
         h_lugar = bbox_lugar[3] - bbox_lugar[1]
         
         draw.text((centro_img_x - (w_lugar / 2), y_texto_lugar), d['lugar'], font=fuente_lugar_global, fill="white")
 
-        # Rastrear el punto más bajo del texto
         if y_texto_lugar + h_lugar > max_y_texto_detectado:
              max_y_texto_detectado = y_texto_lugar + h_lugar
 
         pos_x_actual += d['nuevo_ancho'] + CONFIG['ESPACIADO_X']
 
-    # --- PASO 7: Procesar el Logo JPEG ---
-    ruta_logo_jpeg = CONFIG['ARCHIVO_LOGO_JPEG']
-    if os.path.exists(ruta_logo_jpeg):
-        print("\nInsertando logotipo JPEG...")
-        logo = Image.open(ruta_logo_jpeg).convert("RGB") 
+    # Procesar Logo subido por el usuario
+    if logo_file is not None:
+        logo = Image.open(logo_file).convert("RGB") 
         ancho_logo = 260 
         proporcion = ancho_logo / float(logo.size[0])
         alto_logo = int(float(logo.size[1]) * float(proporcion))
@@ -200,11 +135,96 @@ def main():
         pos_y_logo = max(max_y_texto_detectado + 40, CONFIG['ALTO_LIENZO'] - alto_logo - 40)
         
         lienzo.paste(logo, (pos_x_logo, pos_y_logo))
+
+    return lienzo
+
+# --- INTERFAZ DE USUARIO STREAMLIT ---
+st.title("🖼️ Creador de Collages de Lira")
+st.write("Sube 3 imágenes para generar tu composición. El nombre del archivo se usará como el Autor.")
+
+# Columnas para organizar las subidas de archivos
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    img1_file = st.file_uploader("Imagen 1", type=['jpg', 'jpeg', 'png'])
+    if img1_file:
+        autor1 = os.path.splitext(img1_file.name)[0]
+        st.info(f"Autor: {autor1}")
+        lugar1 = st.text_input("Lugar para Imagen 1", key="lugar1").strip().upper()
+
+with col2:
+    img2_file = st.file_uploader("Imagen 2", type=['jpg', 'jpeg', 'png'])
+    if img2_file:
+        autor2 = os.path.splitext(img2_file.name)[0]
+        st.info(f"Autor: {autor2}")
+        lugar2 = st.text_input("Lugar para Imagen 2", key="lugar2").strip().upper()
+
+with col3:
+    img3_file = st.file_uploader("Imagen 3", type=['jpg', 'jpeg', 'png'])
+    if img3_file:
+        autor3 = os.path.splitext(img3_file.name)[0]
+        st.info(f"Autor: {autor3}")
+        lugar3 = st.text_input("Lugar para Imagen 3", key="lugar3").strip().upper()
+
+st.divider()
+
+# Logo opcional
+st.write("### Opcional: Subir Logotipo")
+logo_upload = st.file_uploader("Sube el logotipo (jpg, png)", type=['jpg', 'jpeg', 'png'])
+
+# Lógica de procesamiento
+if img1_file and img2_file and img3_file:
+    # Verificamos que el usuario haya escrito los lugares
+    if lugar1 and lugar2 and lugar3:
+        if st.button("Generar Collage", type="primary", use_container_width=True):
+            with st.spinner("Procesando imágenes y calculando matemáticas..."):
+                try:
+                    # Preparar los datos tal como los espera tu lógica
+                    datos_imagenes = [
+                        {
+                            'img_obj': Image.open(img1_file).convert("RGB"),
+                            'autor': autor1,
+                            'lugar': lugar1
+                        },
+                        {
+                            'img_obj': Image.open(img2_file).convert("RGB"),
+                            'autor': autor2,
+                            'lugar': lugar2
+                        },
+                        {
+                            'img_obj': Image.open(img3_file).convert("RGB"),
+                            'autor': autor3,
+                            'lugar': lugar3
+                        }
+                    ]
+
+                    # Calcular ratios
+                    for d in datos_imagenes:
+                        d['ratio'] = d['img_obj'].width / d['img_obj'].height
+
+                    # Generar la imagen
+                    imagen_final = generar_collage(datos_imagenes, logo_upload)
+
+                    # Mostrar el resultado
+                    st.success("¡Collage generado con éxito!")
+                    st.image(imagen_final, caption="Resultado Final", use_container_width=True)
+
+                    # Convertir a bytes para el botón de descarga
+                    buf = io.BytesIO()
+                    imagen_final.save(buf, format="JPEG", quality=95)
+                    byte_im = buf.getvalue()
+
+                    st.download_button(
+                        label="⬇️ Descargar Collage HD",
+                        data=byte_im,
+                        file_name="collage_lira.jpeg",
+                        mime="image/jpeg",
+                        use_container_width=True
+                    )
+
+                except Exception as e:
+                    st.error(f"Ocurrió un error al procesar las imágenes: {e}")
     else:
-        print(f"\nAdvertencia: No se encontro el archivo '{ruta_logo_jpeg}' en el directorio actual. Se omitira el logotipo.")
-
-    lienzo.save(CONFIG['ARCHIVO_FINAL'], quality=95)
-    print(f"\nProceso completado. Archivo guardado en el directorio actual como: {CONFIG['ARCHIVO_FINAL']}")
-
-if __name__ == "__main__":
-    main()
+        st.warning("Por favor, ingresa el 'Lugar' para las 3 imágenes antes de continuar.")
+else:
+    st.info("Esperando a que subas las 3 imágenes necesarias...")
