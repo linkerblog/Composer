@@ -15,7 +15,6 @@ if 'img_final' not in st.session_state:
 if 'img_bytes' not in st.session_state:
     st.session_state.img_bytes = None
 if 'orden' not in st.session_state:
-    # Arreglo de índices reales: [0, 1, 2] corresponden a las fotos 1, 2 y 3.
     st.session_state.orden = [0, 1, 2]
 if 'lugares' not in st.session_state:
     st.session_state.lugares = ["", "", ""]
@@ -203,9 +202,9 @@ else:
 
 st.write("### 1. Carga de Fotografías")
 col_up1, col_up2, col_up3 = st.columns(3)
-with col_up1: img1_file = st.file_uploader("Archivo 1", type=['jpg', 'png'])
-with col_up2: img2_file = st.file_uploader("Archivo 2", type=['jpg', 'png'])
-with col_up3: img3_file = st.file_uploader("Archivo 3", type=['jpg', 'png'])
+with col_up1: img1_file = st.file_uploader("Archivo 1", type=['jpg', 'jpeg', 'png'])
+with col_up2: img2_file = st.file_uploader("Archivo 2", type=['jpg', 'jpeg', 'png'])
+with col_up3: img3_file = st.file_uploader("Archivo 3", type=['jpg', 'jpeg', 'png'])
 
 if img1_file and img2_file and img3_file:
     st.divider()
@@ -213,7 +212,6 @@ if img1_file and img2_file and img3_file:
     archivos = [img1_file, img2_file, img3_file]
     autores = [os.path.splitext(f.name)[0] for f in archivos]
     
-    # Pre-cargamos miniaturas recortadas simétricamente para mantener la UI perfecta
     miniaturas = []
     for f in archivos:
         f.seek(0)
@@ -224,18 +222,15 @@ if img1_file and img2_file and img3_file:
     
     for visual_idx, real_idx in enumerate(st.session_state.orden):
         with cols_preview[visual_idx]:
-            # La imagen ahora es uniformemente cuadrada en la UI
             st.image(miniaturas[real_idx], width='stretch')
             st.caption(f"**Autor:** {autores[real_idx]}")
             
-            # Textbox anclado a la imagen real, no a la columna
             st.session_state.lugares[real_idx] = st.text_input(
                 "Ubicación", 
                 value=st.session_state.lugares[real_idx], 
                 key=f"loc_{real_idx}"
             ).strip().upper()
             
-            # Botones de navegación interactivos
             c_izq, c_der = st.columns(2)
             with c_izq:
                 if visual_idx > 0:
@@ -249,7 +244,8 @@ if img1_file and img2_file and img3_file:
     else:
         st.divider()
         st.write("### 3. Opciones Adicionales")
-        logo_upload = st.file_uploader("Logotipo (Opcional)", type=['png'])
+        # Aquí está la corrección: ahora acepta la familia entera de imágenes para el logotipo
+        logo_upload = st.file_uploader("Logotipo (Opcional)", type=['jpg', 'jpeg', 'png'])
         
         c_opc1, c_opc2, c_opc3 = st.columns(3)
         with c_opc1:
@@ -265,7 +261,6 @@ if img1_file and img2_file and img3_file:
         if st.button("Generar Composición", type="primary", width='stretch'):
             with st.spinner("Procesando matriz gráfica..."):
                 try:
-                    # Ensamblamos los datos finales respetando la posición visual
                     datos_brutos = []
                     for r_idx in range(3):
                         archivos[r_idx].seek(0)
