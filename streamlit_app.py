@@ -15,18 +15,22 @@ if 'img_final' not in st.session_state:
 if 'img_bytes' not in st.session_state:
     st.session_state.img_bytes = None
 if 'ordenes' not in st.session_state:
-    # Estado inicial: Imagen 1->1, Imagen 2->2, Imagen 3->3
     st.session_state.ordenes = [1, 2, 3]
+    # Inicializamos las llaves de los selectboxes explícitamente para evitar conflictos
+    st.session_state.ord_0 = 1
+    st.session_state.ord_1 = 2
+    st.session_state.ord_2 = 3
 
 def manejar_cambio_orden(mod_idx):
-    """Callback para asegurar que el orden sea mutuamente excluyente (intercambio)."""
+    """Callback para asegurar el intercambio mutuo de las cajas de selección."""
     nuevo_valor = st.session_state[f"ord_{mod_idx}"]
     valor_viejo = st.session_state.ordenes[mod_idx]
     
     if nuevo_valor != valor_viejo:
-        # Busca qué imagen tenía este nuevo valor y le asigna el viejo (swap)
+        # Busca qué imagen tenía este nuevo valor y le asigna el viejo (swap forzado en la UI)
         for i in range(3):
             if i != mod_idx and st.session_state.ordenes[i] == nuevo_valor:
+                st.session_state[f"ord_{i}"] = valor_viejo
                 st.session_state.ordenes[i] = valor_viejo
                 break
         st.session_state.ordenes[mod_idx] = nuevo_valor
@@ -46,7 +50,9 @@ def extraer_colores_vibrantes(datos_imagenes):
     colores = []
     for d in datos_imagenes:
         img_peq = d['img_obj'].resize((4, 4), Image.Resampling.LANCZOS)
-        pixeles = list(img_peq.getdata())
+        
+        # Corrección a prueba del futuro para Pillow 14 (eliminamos getdata)
+        pixeles = [img_peq.getpixel((x, y)) for x in range(4) for y in range(4)]
         
         mejor_color = (0, 0, 0)
         max_score = -1
@@ -248,14 +254,12 @@ col1, col2, col3 = st.columns(3)
 with col1:
     img1_file = st.file_uploader("Archivo 1", type=['jpg', 'jpeg', 'png'])
     if img1_file:
-        # Rebobinamos el buffer por seguridad
         img1_file.seek(0)
-        # Mostramos la miniatura
         st.image(img1_file, width=150)
         autor1 = os.path.splitext(img1_file.name)[0]
         lugar1 = st.text_input("Ubicación (Archivo 1)", key="lugar1").strip().upper()
-        # Conectamos el selector con nuestro callback de ordenamiento
-        st.selectbox("Orden en Collage", [1, 2, 3], key="ord_0", index=st.session_state.ordenes[0]-1, on_change=manejar_cambio_orden, args=(0,))
+        # Se elimina el index para que Streamlit use el estado de sesión de la 'key' de forma natural
+        st.selectbox("Orden en Collage", [1, 2, 3], key="ord_0", on_change=manejar_cambio_orden, args=(0,))
 
 with col2:
     img2_file = st.file_uploader("Archivo 2", type=['jpg', 'jpeg', 'png'])
@@ -264,7 +268,7 @@ with col2:
         st.image(img2_file, width=150)
         autor2 = os.path.splitext(img2_file.name)[0]
         lugar2 = st.text_input("Ubicación (Archivo 2)", key="lugar2").strip().upper()
-        st.selectbox("Orden en Collage", [1, 2, 3], key="ord_1", index=st.session_state.ordenes[1]-1, on_change=manejar_cambio_orden, args=(1,))
+        st.selectbox("Orden en Collage", [1, 2, 3], key="ord_1", on_change=manejar_cambio_orden, args=(1,))
 
 with col3:
     img3_file = st.file_uploader("Archivo 3", type=['jpg', 'jpeg', 'png'])
@@ -273,7 +277,7 @@ with col3:
         st.image(img3_file, width=150)
         autor3 = os.path.splitext(img3_file.name)[0]
         lugar3 = st.text_input("Ubicación (Archivo 3)", key="lugar3").strip().upper()
-        st.selectbox("Orden en Collage", [1, 2, 3], key="ord_2", index=st.session_state.ordenes[2]-1, on_change=manejar_cambio_orden, args=(2,))
+        st.selectbox("Orden en Collage", [1, 2, 3], key="ord_2", on_change=manejar_cambio_orden, args=(2,))
 
 st.divider()
 
@@ -287,7 +291,6 @@ with col_opc1:
 with col_opc2:
     aplicar_marco = st.checkbox("Aplicar marco a las fotos")
     estilo_marco = st.selectbox("Patrón del marco", ["Sólido", "Punteado", "Discontinuo"], disabled=not aplicar_marco)
-    # Reemplazado el checkbox por un slider hasta 5px
     grosor_marco = st.slider("Grosor del marco (px)", min_value=1, max_value=5, value=1, step=1, disabled=not aplicar_marco)
 with col_opc3:
     color_marco_hex = st.color_picker("Color del marco", "#FFFFFF", disabled=not aplicar_marco)
@@ -298,7 +301,6 @@ if img1_file and img2_file and img3_file:
             if st.button("Generar Composición", type="primary", width='stretch'):
                 with st.spinner("Procesando datos gráficos..."):
                     try:
-                        # Aseguramos que los cursores estén en 0 antes de abrir
                         img1_file.seek(0)
                         img2_file.seek(0)
                         img3_file.seek(0)
@@ -319,7 +321,6 @@ if img1_file and img2_file and img3_file:
                         else:
                             paleta = extraer_colores_vibrantes(datos_imagenes)
 
-                        # Procesamiento del logo fuera del core gráfico
                         logo_img = None
                         if logo_upload is not None:
                             logo_upload.seek(0)
