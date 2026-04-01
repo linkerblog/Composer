@@ -5,7 +5,7 @@ import os
 import io
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Generador de Collages", layout="centered")
+st.set_page_config(page_title="Generador de Composiciones", layout="centered")
 
 def obtener_color_aleatorio():
     """Genera un color RGB al azar."""
@@ -23,36 +23,30 @@ def dibujar_degradado_aleatorio(lienzo, draw):
         b = int(color_inicio[2] + (color_fin[2] - color_inicio[2]) * (y / alto))
         draw.line([(0, y), (ancho, y)], fill=(r, g, b))
 
-def calcular_fuente_uniforme_global(textos, anchos_maximos, nombre_fuente, tamano_inicial, draw):
+def calcular_fuente_uniforme_global(textos, anchos_maximos, ruta_fuente, tamano_inicial, draw):
     """Calcula el tamaño máximo de fuente uniforme."""
     tamano_actual = tamano_inicial
-    try:
-        # En Streamlit Cloud (Linux), arialbd.ttf podría no estar disponible. 
-        # Si tienes la fuente, súbela junto al script. Si no, usará la por defecto.
-        fuente = ImageFont.truetype(nombre_fuente, tamano_actual)
-        
-        while tamano_actual > 12:
-            todos_caben = True
-            for texto, max_ancho in zip(textos, anchos_maximos):
-                bbox = draw.textbbox((0, 0), texto, font=fuente)
-                ancho_texto = bbox[2] - bbox[0]
-                if ancho_texto > (max_ancho - 10):
-                    todos_caben = False
-                    break
-            
-            if todos_caben:
+    fuente = ImageFont.truetype(ruta_fuente, tamano_actual)
+    
+    while tamano_actual > 12:
+        todos_caben = True
+        for texto, max_ancho in zip(textos, anchos_maximos):
+            bbox = draw.textbbox((0, 0), texto, font=fuente)
+            ancho_texto = bbox[2] - bbox[0]
+            if ancho_texto > (max_ancho - 10):
+                todos_caben = False
                 break
-                
-            tamano_actual -= 2
-            fuente = ImageFont.truetype(nombre_fuente, tamano_actual)
+        
+        if todos_caben:
+            break
             
-        return fuente
-    except IOError:
-        return ImageFont.load_default()
+        tamano_actual -= 2
+        fuente = ImageFont.truetype(ruta_fuente, tamano_actual)
+        
+    return fuente
 
-def generar_collage(datos_imagenes, logo_file):
+def generar_collage(datos_imagenes, logo_file, ruta_fuente):
     """Función principal que procesa y genera la imagen final en memoria."""
-    # Configuraciones estrictas originales
     CONFIG = {
         'ANCHO_LIENZO': 1600,
         'ALTO_LIENZO': 1147,
@@ -60,7 +54,6 @@ def generar_collage(datos_imagenes, logo_file):
         'ESPACIADO_X': 24,      
         'MAX_ALTO_IMG': 580,    
         'MAX_ANCHO_TOTAL': 1500,
-        'FUENTE_TTF': 'arialbd.ttf', # Sube este archivo a tu repo si quieres usarla
         'TAMANO_BASE_NOMBRE': 48,
         'TAMANO_BASE_LUGAR': 72
     }
@@ -91,11 +84,11 @@ def generar_collage(datos_imagenes, logo_file):
     lugares = [d['lugar'] for d in datos_imagenes]
 
     fuente_nombre_global = calcular_fuente_uniforme_global(
-        autores, anchos_permitidos_por_columna, CONFIG['FUENTE_TTF'], CONFIG['TAMANO_BASE_NOMBRE'], draw
+        autores, anchos_permitidos_por_columna, ruta_fuente, CONFIG['TAMANO_BASE_NOMBRE'], draw
     )
     
     fuente_lugar_global = calcular_fuente_uniforme_global(
-        lugares, anchos_permitidos_por_columna, CONFIG['FUENTE_TTF'], CONFIG['TAMANO_BASE_LUGAR'], draw
+        lugares, anchos_permitidos_por_columna, ruta_fuente, CONFIG['TAMANO_BASE_LUGAR'], draw
     )
 
     max_y_texto_detectado = 0
@@ -123,7 +116,6 @@ def generar_collage(datos_imagenes, logo_file):
 
         pos_x_actual += d['nuevo_ancho'] + CONFIG['ESPACIADO_X']
 
-    # Procesar Logo subido por el usuario
     if logo_file is not None:
         logo = Image.open(logo_file).convert("RGB") 
         ancho_logo = 260 
@@ -139,92 +131,95 @@ def generar_collage(datos_imagenes, logo_file):
     return lienzo
 
 # --- INTERFAZ DE USUARIO STREAMLIT ---
-st.title("🖼️ Creador de Collages de Lira")
-st.write("Sube 3 imágenes para generar tu composición. El nombre del archivo se usará como el Autor.")
+st.title("Generador de Composiciones")
+st.write("Seleccione los archivos necesarios. El nombre del archivo se utilizará como Autor.")
 
-# Columnas para organizar las subidas de archivos
-col1, col2, col3 = st.columns(3)
+# --- LECTOR DE FUENTES ROBUSTO ---
+# Detectar la ruta exacta donde se está ejecutando el script
+directorio_actual = os.path.dirname(os.path.abspath(__file__))
+ruta_carpeta_fuentes = os.path.join(directorio_actual, "fuentes")
 
-with col1:
-    img1_file = st.file_uploader("Imagen 1", type=['jpg', 'jpeg', 'png'])
-    if img1_file:
-        autor1 = os.path.splitext(img1_file.name)[0]
-        st.info(f"Autor: {autor1}")
-        lugar1 = st.text_input("Lugar para Imagen 1", key="lugar1").strip().upper()
+# Crear la carpeta automáticamente si no existe en el sistema
+if not os.path.exists(ruta_carpeta_fuentes):
+    os.makedirs(ruta_carpeta_fuentes)
 
-with col2:
-    img2_file = st.file_uploader("Imagen 2", type=['jpg', 'jpeg', 'png'])
-    if img2_file:
-        autor2 = os.path.splitext(img2_file.name)[0]
-        st.info(f"Autor: {autor2}")
-        lugar2 = st.text_input("Lugar para Imagen 2", key="lugar2").strip().upper()
+# Leer archivos .ttf y .otf
+fuentes_disponibles = [f for f in os.listdir(ruta_carpeta_fuentes) if f.lower().endswith(('.ttf', '.otf'))]
+ruta_fuente_completa = None
 
-with col3:
-    img3_file = st.file_uploader("Imagen 3", type=['jpg', 'jpeg', 'png'])
-    if img3_file:
-        autor3 = os.path.splitext(img3_file.name)[0]
-        st.info(f"Autor: {autor3}")
-        lugar3 = st.text_input("Lugar para Imagen 3", key="lugar3").strip().upper()
+if not fuentes_disponibles:
+    st.warning(f"No se detectaron archivos de tipografía (.ttf o .otf) en el directorio '{ruta_carpeta_fuentes}'. Inserte al menos un archivo para habilitar la generación.")
+else:
+    fuente_seleccionada = st.selectbox("Selección de Tipografía", fuentes_disponibles)
+    ruta_fuente_completa = os.path.join(ruta_carpeta_fuentes, fuente_seleccionada)
 
 st.divider()
 
-# Logo opcional
-st.write("### Opcional: Subir Logotipo")
-logo_upload = st.file_uploader("Sube el logotipo (jpg, png)", type=['jpg', 'jpeg', 'png'])
+col1, col2, col3 = st.columns(3)
 
-# Lógica de procesamiento
+with col1:
+    img1_file = st.file_uploader("Archivo 1", type=['jpg', 'jpeg', 'png'])
+    if img1_file:
+        autor1 = os.path.splitext(img1_file.name)[0]
+        st.info(f"Autor detectado: {autor1}")
+        lugar1 = st.text_input("Ubicación (Archivo 1)", key="lugar1").strip().upper()
+
+with col2:
+    img2_file = st.file_uploader("Archivo 2", type=['jpg', 'jpeg', 'png'])
+    if img2_file:
+        autor2 = os.path.splitext(img2_file.name)[0]
+        st.info(f"Autor detectado: {autor2}")
+        lugar2 = st.text_input("Ubicación (Archivo 2)", key="lugar2").strip().upper()
+
+with col3:
+    img3_file = st.file_uploader("Archivo 3", type=['jpg', 'jpeg', 'png'])
+    if img3_file:
+        autor3 = os.path.splitext(img3_file.name)[0]
+        st.info(f"Autor detectado: {autor3}")
+        lugar3 = st.text_input("Ubicación (Archivo 3)", key="lugar3").strip().upper()
+
+st.divider()
+
+st.write("### Opciones Adicionales")
+logo_upload = st.file_uploader("Logotipo (Opcional)", type=['jpg', 'jpeg', 'png'])
+
 if img1_file and img2_file and img3_file:
-    # Verificamos que el usuario haya escrito los lugares
     if lugar1 and lugar2 and lugar3:
-        if st.button("Generar Collage", type="primary", use_container_width=True):
-            with st.spinner("Procesando imágenes y calculando matemáticas..."):
-                try:
-                    # Preparar los datos tal como los espera tu lógica
-                    datos_imagenes = [
-                        {
-                            'img_obj': Image.open(img1_file).convert("RGB"),
-                            'autor': autor1,
-                            'lugar': lugar1
-                        },
-                        {
-                            'img_obj': Image.open(img2_file).convert("RGB"),
-                            'autor': autor2,
-                            'lugar': lugar2
-                        },
-                        {
-                            'img_obj': Image.open(img3_file).convert("RGB"),
-                            'autor': autor3,
-                            'lugar': lugar3
-                        }
-                    ]
+        if ruta_fuente_completa: # Validación extra para asegurar que hay fuente
+            if st.button("Generar Composición", type="primary", use_container_width=True):
+                with st.spinner("Procesando datos..."):
+                    try:
+                        datos_imagenes = [
+                            {'img_obj': Image.open(img1_file).convert("RGB"), 'autor': autor1, 'lugar': lugar1},
+                            {'img_obj': Image.open(img2_file).convert("RGB"), 'autor': autor2, 'lugar': lugar2},
+                            {'img_obj': Image.open(img3_file).convert("RGB"), 'autor': autor3, 'lugar': lugar3}
+                        ]
 
-                    # Calcular ratios
-                    for d in datos_imagenes:
-                        d['ratio'] = d['img_obj'].width / d['img_obj'].height
+                        for d in datos_imagenes:
+                            d['ratio'] = d['img_obj'].width / d['img_obj'].height
 
-                    # Generar la imagen
-                    imagen_final = generar_collage(datos_imagenes, logo_upload)
+                        imagen_final = generar_collage(datos_imagenes, logo_upload, ruta_fuente_completa)
 
-                    # Mostrar el resultado
-                    st.success("¡Collage generado con éxito!")
-                    st.image(imagen_final, caption="Resultado Final", use_container_width=True)
+                        st.success("Procesamiento completado.")
+                        st.image(imagen_final, caption="Resultado Final", use_container_width=True)
 
-                    # Convertir a bytes para el botón de descarga
-                    buf = io.BytesIO()
-                    imagen_final.save(buf, format="JPEG", quality=95)
-                    byte_im = buf.getvalue()
+                        buf = io.BytesIO()
+                        imagen_final.save(buf, format="JPEG", quality=95)
+                        byte_im = buf.getvalue()
 
-                    st.download_button(
-                        label="⬇️ Descargar Collage HD",
-                        data=byte_im,
-                        file_name="collage_lira.jpeg",
-                        mime="image/jpeg",
-                        use_container_width=True
-                    )
+                        st.download_button(
+                            label="Descargar Composición",
+                            data=byte_im,
+                            file_name="composicion_final.jpeg",
+                            mime="image/jpeg",
+                            use_container_width=True
+                        )
 
-                except Exception as e:
-                    st.error(f"Ocurrió un error al procesar las imágenes: {e}")
+                    except Exception as e:
+                        st.error(f"Error interno de procesamiento: {e}")
+        else:
+             st.error("Es necesario seleccionar una tipografía para proceder.")
     else:
-        st.warning("Por favor, ingresa el 'Lugar' para las 3 imágenes antes de continuar.")
+        st.warning("Se requiere completar el campo 'Ubicación' para los tres archivos.")
 else:
-    st.info("Esperando a que subas las 3 imágenes necesarias...")
+    st.info("Esperando carga de archivos requeridos...")
