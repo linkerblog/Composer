@@ -1,27 +1,70 @@
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageChops
 import random
 import os
 import io
+import math
+import colorsys
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Generador de Composiciones", layout="centered")
 
-def obtener_color_aleatorio():
-    """Genera un color RGB al azar."""
-    return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-
-def dibujar_degradado_aleatorio(lienzo, draw):
-    """Dibuja un degradado lineal en el lienzo con colores aleatorios."""
-    color_inicio = obtener_color_aleatorio()
-    color_fin = obtener_color_aleatorio()
+def generar_paleta_analoga():
+    """Genera 3 colores armónicos análogos usando el espacio HSV."""
+    h_base = random.random() # Tono aleatorio en el círculo cromático
+    s = random.uniform(0.65, 0.85) # Saturación moderada-alta
+    v = random.uniform(0.75, 0.95) # Brillo elevado para simular luz
     
+    colores = []
+    # Desplazamientos cortos en el tono para mantener la armonía (sin grises muertos)
+    for offset in [0, 0.12, -0.08]: 
+        h = (h_base + offset) % 1.0
+        r, g, b = colorsys.hsv_to_rgb(h, s, v)
+        colores.append((int(r*255), int(g*255), int(b*255)))
+    return colores
+
+def dibujar_degradado_avanzado(lienzo):
+    """
+    Renderiza un degradado tipo malla con iluminación simulada, 
+    curvas de easing y ruido fotográfico.
+    """
     ancho, alto = lienzo.size
-    for y in range(alto):
-        r = int(color_inicio[0] + (color_fin[0] - color_inicio[0]) * (y / alto))
-        g = int(color_inicio[1] + (color_fin[1] - color_inicio[1]) * (y / alto))
-        b = int(color_inicio[2] + (color_fin[2] - color_inicio[2]) * (y / alto))
-        draw.line([(0, y), (ancho, y)], fill=(r, g, b))
+    color1, color2, color3 = generar_paleta_analoga()
+    
+    # Optimización: Renderizar a baja resolución para no bloquear el CPU
+    escala = 10
+    w_peq, h_peq = ancho // escala, alto // escala
+    img_base = Image.new('RGB', (w_peq, h_peq))
+    
+    for y in range(h_peq):
+        for x in range(w_peq):
+            # Coordenadas normalizadas (0 a 1)
+            nx = x / w_peq
+            ny = y / h_peq
+            
+            # Mesh Gradient / Easing: Distancias radiales exponenciales 
+            # desde diferentes puntos para simular focos de luz asimétricos.
+            inf1 = max(0, 1 - math.sqrt(nx**2 + ny**2))**1.6
+            inf2 = max(0, 1 - math.sqrt((1-nx)**2 + (1-ny)**2))**1.4
+            inf3 = max(0, 1 - math.sqrt((0.4-nx)**2 + (0.8-ny)**2))**1.8 
+            
+            total = inf1 + inf2 + inf3 + 0.001 # Evitar división por cero
+            
+            r = int((color1[0]*inf1 + color2[0]*inf2 + color3[0]*inf3) / total)
+            g = int((color1[1]*inf1 + color2[1]*inf2 + color3[1]*inf3) / total)
+            b = int((color1[2]*inf1 + color2[2]*inf2 + color3[2]*inf3) / total)
+            
+            img_base.putpixel((x, y), (r, g, b))
+            
+    # La interpolación LANCZOS crea la fusión ultra suave final
+    degradado_suave = img_base.resize((ancho, alto), Image.Resampling.LANCZOS)
+    
+    # Ruido algorítmico para textura premium y eliminación de banding
+    ruido = Image.effect_noise((ancho, alto), 12).convert('L')
+    ruido_rgb = Image.merge('RGB', (ruido, ruido, ruido))
+    
+    # Fusionar malla y ruido con un 6% de opacidad
+    lienzo.paste(ImageChops.blend(degradado_suave, ruido_rgb, alpha=0.06))
 
 def calcular_fuente_uniforme_global(textos, anchos_maximos, ruta_fuente, tamano_inicial, draw):
     """Calcula el tamaño máximo de fuente uniforme."""
@@ -59,8 +102,8 @@ def generar_collage(datos_imagenes, logo_file, ruta_fuente):
     }
 
     lienzo = Image.new('RGB', (CONFIG['ANCHO_LIENZO'], CONFIG['ALTO_LIENZO']))
+    dibujar_degradado_avanzado(lienzo) # Aplicar el nuevo motor de fondos
     draw = ImageDraw.Draw(lienzo)
-    dibujar_degradado_aleatorio(lienzo, draw)
 
     suma_ratios = sum(d['ratio'] for d in datos_imagenes)
     espacio_disponible_w = CONFIG['MAX_ANCHO_TOTAL'] - (CONFIG['ESPACIADO_X'] * 2)
@@ -126,7 +169,11 @@ def generar_collage(datos_imagenes, logo_file, ruta_fuente):
         pos_x_logo = (CONFIG['ANCHO_LIENZO'] - ancho_logo) // 2
         pos_y_logo = max(max_y_texto_detectado + 40, CONFIG['ALTO_LIENZO'] - alto_logo - 40)
         
-        lienzo.paste(logo, (pos_x_logo, pos_y_logo))
+        # Uso del logo como máscara para soportar PNG con transparencias, o pegado normal
+        if logo.mode == 'RGBA':
+            lienzo.paste(logo, (pos_x_logo, pos_y_logo), logo)
+        else:
+            lienzo.paste(logo, (pos_x_logo, pos_y_logo))
 
     return lienzo
 
@@ -135,15 +182,12 @@ st.title("Generador de Composiciones")
 st.write("Seleccione los archivos necesarios. El nombre del archivo se utilizará como Autor.")
 
 # --- LECTOR DE FUENTES ROBUSTO ---
-# Detectar la ruta exacta donde se está ejecutando el script
 directorio_actual = os.path.dirname(os.path.abspath(__file__))
 ruta_carpeta_fuentes = os.path.join(directorio_actual, "fuentes")
 
-# Crear la carpeta automáticamente si no existe en el sistema
 if not os.path.exists(ruta_carpeta_fuentes):
     os.makedirs(ruta_carpeta_fuentes)
 
-# Leer archivos .ttf y .otf
 fuentes_disponibles = [f for f in os.listdir(ruta_carpeta_fuentes) if f.lower().endswith(('.ttf', '.otf'))]
 ruta_fuente_completa = None
 
@@ -185,9 +229,9 @@ logo_upload = st.file_uploader("Logotipo (Opcional)", type=['jpg', 'jpeg', 'png'
 
 if img1_file and img2_file and img3_file:
     if lugar1 and lugar2 and lugar3:
-        if ruta_fuente_completa: # Validación extra para asegurar que hay fuente
+        if ruta_fuente_completa:
             if st.button("Generar Composición", type="primary", use_container_width=True):
-                with st.spinner("Procesando datos..."):
+                with st.spinner("Procesando datos gráficos..."):
                     try:
                         datos_imagenes = [
                             {'img_obj': Image.open(img1_file).convert("RGB"), 'autor': autor1, 'lugar': lugar1},
