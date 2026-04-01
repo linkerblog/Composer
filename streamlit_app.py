@@ -9,6 +9,12 @@ import colorsys
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Generador de Composiciones", layout="centered")
 
+# --- INICIALIZACIÓN DE MEMORIA DE SESIÓN ---
+if 'img_final' not in st.session_state:
+    st.session_state.img_final = None
+if 'img_bytes' not in st.session_state:
+    st.session_state.img_bytes = None
+
 def generar_paleta_analoga():
     h_base = random.random()
     s = random.uniform(0.65, 0.85)
@@ -21,13 +27,8 @@ def generar_paleta_analoga():
     return colores
 
 def extraer_colores_vibrantes(datos_imagenes):
-    """
-    Extrae colores analizando una cuadrícula de la imagen 
-    y buscando matemáticamente el píxel más vibrante para evitar tonos opacos.
-    """
     colores = []
     for d in datos_imagenes:
-        # En lugar de 1x1, evaluamos una cuadrícula de 4x4 píxeles
         img_peq = d['img_obj'].resize((4, 4), Image.Resampling.LANCZOS)
         pixeles = list(img_peq.getdata())
         
@@ -36,16 +37,15 @@ def extraer_colores_vibrantes(datos_imagenes):
         
         for r, g, b in pixeles:
             h, s, v = colorsys.rgb_to_hsv(r/255.0, g/255.0, b/255.0)
-            score = s + v # Puntuamos alto a los colores saturados y brillantes
+            score = s + v 
             if score > max_score:
                 max_score = score
                 mejor_color = (r, g, b)
                 
-        # Potenciamos la pureza del color extraído
         r, g, b = mejor_color
         h, s, v = colorsys.rgb_to_hsv(r/255.0, g/255.0, b/255.0)
-        s = min(1.0, s * 1.3 + 0.2) # Realzamos saturación
-        v = min(1.0, v * 1.1 + 0.1) # Realzamos brillo
+        s = min(1.0, s * 1.3 + 0.2) 
+        v = min(1.0, v * 1.1 + 0.1) 
         r_v, g_v, b_v = colorsys.hsv_to_rgb(h, s, v)
         
         colores.append((int(r_v*255), int(g_v*255), int(b_v*255)))
@@ -259,7 +259,6 @@ logo_upload = st.file_uploader("Logotipo (Opcional)", type=['jpg', 'jpeg', 'png'
 
 col_opc1, col_opc2, col_opc3 = st.columns(3)
 with col_opc1:
-    # Offset ajustado en múltiplos de 5
     offset_texto = st.slider("Ajuste vertical de los textos (px)", min_value=-50, max_value=50, value=0, step=5)
     usar_aleatorio = st.checkbox("Usar paleta de colores aleatoria", value=False)
 with col_opc2:
@@ -275,14 +274,12 @@ if img1_file and img2_file and img3_file:
             if st.button("Generar Composición", type="primary", width='stretch'):
                 with st.spinner("Procesando datos gráficos..."):
                     try:
-                        # Extraer datos iniciales con su orden asignado
                         datos_imagenes_brutos = [
                             {'img_obj': ImageOps.exif_transpose(Image.open(img1_file).convert("RGB")), 'autor': autor1, 'lugar': lugar1, 'orden': orden1},
                             {'img_obj': ImageOps.exif_transpose(Image.open(img2_file).convert("RGB")), 'autor': autor2, 'lugar': lugar2, 'orden': orden2},
                             {'img_obj': ImageOps.exif_transpose(Image.open(img3_file).convert("RGB")), 'autor': autor3, 'lugar': lugar3, 'orden': orden3}
                         ]
 
-                        # Ordenar la matriz de imágenes según la selección del usuario
                         datos_imagenes = sorted(datos_imagenes_brutos, key=lambda x: x['orden'])
 
                         for d in datos_imagenes:
@@ -293,29 +290,35 @@ if img1_file and img2_file and img3_file:
                         else:
                             paleta = extraer_colores_vibrantes(datos_imagenes)
 
+                        # Generamos la imagen
                         imagen_final = generar_collage(
                             datos_imagenes, logo_upload, ruta_fuente_completa, 
                             offset_texto, aplicar_marco, estilo_marco, color_marco_hex, doblar_marco, 
                             paleta
                         )
 
-                        st.success("Procesamiento completado.")
-                        st.image(imagen_final, caption="Resultado Final", width='stretch')
-
+                        # Guardamos en la memoria de sesión
+                        st.session_state.img_final = imagen_final
+                        
                         buf = io.BytesIO()
                         imagen_final.save(buf, format="JPEG", quality=95)
-                        byte_im = buf.getvalue()
-
-                        st.download_button(
-                            label="Descargar Composición",
-                            data=byte_im,
-                            file_name="composicion_final.jpeg",
-                            mime="image/jpeg",
-                            width='stretch'
-                        )
+                        st.session_state.img_bytes = buf.getvalue()
 
                     except Exception as e:
                         st.error(f"Error interno de procesamiento: {e}")
+            
+            # Dibujamos siempre desde la memoria de sesión, si existe
+            if st.session_state.img_final is not None:
+                st.image(st.session_state.img_final, caption="Resultado Final", width='stretch')
+                
+                st.download_button(
+                    label="Descargar Composición",
+                    data=st.session_state.img_bytes,
+                    file_name="composicion_final.jpeg",
+                    mime="image/jpeg",
+                    width='stretch'
+                )
+
         else:
              st.error("Es necesario seleccionar una tipografía para proceder.")
     else:
