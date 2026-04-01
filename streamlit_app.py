@@ -14,6 +14,22 @@ if 'img_final' not in st.session_state:
     st.session_state.img_final = None
 if 'img_bytes' not in st.session_state:
     st.session_state.img_bytes = None
+if 'ordenes' not in st.session_state:
+    # Estado inicial: Imagen 1->1, Imagen 2->2, Imagen 3->3
+    st.session_state.ordenes = [1, 2, 3]
+
+def manejar_cambio_orden(mod_idx):
+    """Callback para asegurar que el orden sea mutuamente excluyente (intercambio)."""
+    nuevo_valor = st.session_state[f"ord_{mod_idx}"]
+    valor_viejo = st.session_state.ordenes[mod_idx]
+    
+    if nuevo_valor != valor_viejo:
+        # Busca qué imagen tenía este nuevo valor y le asigna el viejo (swap)
+        for i in range(3):
+            if i != mod_idx and st.session_state.ordenes[i] == nuevo_valor:
+                st.session_state.ordenes[i] = valor_viejo
+                break
+        st.session_state.ordenes[mod_idx] = nuevo_valor
 
 def generar_paleta_analoga():
     h_base = random.random()
@@ -100,7 +116,7 @@ def hex_a_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
-def generar_collage(datos_imagenes, logo_file, ruta_fuente, offset_y_texto, aplicar_marco, estilo_marco, color_marco_hex, doblar_marco, colores):
+def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, aplicar_marco, estilo_marco, color_marco_hex, grosor_marco, colores):
     CONFIG = {
         'ANCHO_LIENZO': 1600,
         'ALTO_LIENZO': 1147,
@@ -147,7 +163,6 @@ def generar_collage(datos_imagenes, logo_file, ruta_fuente, offset_y_texto, apli
 
     max_y_texto_detectado = 0
     color_marco_rgb = hex_a_rgb(color_marco_hex)
-    grosor_borde = 2 if doblar_marco else 1
 
     for d in datos_imagenes:
         lienzo.paste(d['img_redimensionada'], (pos_x_actual, CONFIG['MARGEN_SUPERIOR']))
@@ -159,17 +174,17 @@ def generar_collage(datos_imagenes, logo_file, ruta_fuente, offset_y_texto, apli
             y1 = CONFIG['MARGEN_SUPERIOR'] + alto_final_img - 1
             
             if estilo_marco == "Sólido":
-                draw.rectangle([x0, y0, x1, y1], outline=color_marco_rgb, width=grosor_borde)
+                draw.rectangle([x0, y0, x1, y1], outline=color_marco_rgb, width=grosor_marco)
             else:
                 paso = 4 if estilo_marco == "Punteado" else 12
                 largo_linea = 2 if estilo_marco == "Punteado" else 6
                 
                 for x in range(x0, x1 + 1, paso):
-                    draw.line([(x, y0), (min(x + largo_linea - 1, x1), y0)], fill=color_marco_rgb, width=grosor_borde)
-                    draw.line([(x, y1), (min(x + largo_linea - 1, x1), y1)], fill=color_marco_rgb, width=grosor_borde)
+                    draw.line([(x, y0), (min(x + largo_linea - 1, x1), y0)], fill=color_marco_rgb, width=grosor_marco)
+                    draw.line([(x, y1), (min(x + largo_linea - 1, x1), y1)], fill=color_marco_rgb, width=grosor_marco)
                 for y in range(y0, y1 + 1, paso):
-                    draw.line([(x0, y), (x0, min(y + largo_linea - 1, y1))], fill=color_marco_rgb, width=grosor_borde)
-                    draw.line([(x1, y), (x1, min(y + largo_linea - 1, y1))], fill=color_marco_rgb, width=grosor_borde)
+                    draw.line([(x0, y), (x0, min(y + largo_linea - 1, y1))], fill=color_marco_rgb, width=grosor_marco)
+                    draw.line([(x1, y), (x1, min(y + largo_linea - 1, y1))], fill=color_marco_rgb, width=grosor_marco)
 
         centro_img_x = pos_x_actual + (d['nuevo_ancho'] // 2)
 
@@ -192,20 +207,19 @@ def generar_collage(datos_imagenes, logo_file, ruta_fuente, offset_y_texto, apli
 
         pos_x_actual += d['nuevo_ancho'] + CONFIG['ESPACIADO_X']
 
-    if logo_file is not None:
-        logo = Image.open(logo_file).convert("RGBA") 
+    if logo_img is not None:
         ancho_logo = 260 
-        proporcion = ancho_logo / float(logo.size[0])
-        alto_logo = int(float(logo.size[1]) * float(proporcion))
-        logo = logo.resize((ancho_logo, alto_logo), Image.Resampling.LANCZOS)
+        proporcion = ancho_logo / float(logo_img.size[0])
+        alto_logo = int(float(logo_img.size[1]) * float(proporcion))
+        logo_procesado = logo_img.resize((ancho_logo, alto_logo), Image.Resampling.LANCZOS)
         
         pos_x_logo = (CONFIG['ANCHO_LIENZO'] - ancho_logo) // 2
         pos_y_logo = max(max_y_texto_detectado + 40, CONFIG['ALTO_LIENZO'] - alto_logo - 30)
         
-        if logo.mode == 'RGBA':
-            lienzo.paste(logo, (pos_x_logo, pos_y_logo), logo)
+        if logo_procesado.mode == 'RGBA':
+            lienzo.paste(logo_procesado, (pos_x_logo, pos_y_logo), logo_procesado)
         else:
-            lienzo.paste(logo, (pos_x_logo, pos_y_logo))
+            lienzo.paste(logo_procesado, (pos_x_logo, pos_y_logo))
 
     return lienzo
 
@@ -234,23 +248,32 @@ col1, col2, col3 = st.columns(3)
 with col1:
     img1_file = st.file_uploader("Archivo 1", type=['jpg', 'jpeg', 'png'])
     if img1_file:
+        # Rebobinamos el buffer por seguridad
+        img1_file.seek(0)
+        # Mostramos la miniatura
+        st.image(img1_file, width=150)
         autor1 = os.path.splitext(img1_file.name)[0]
         lugar1 = st.text_input("Ubicación (Archivo 1)", key="lugar1").strip().upper()
-        orden1 = st.selectbox("Orden en Collage", [1, 2, 3], index=0, key="ord1")
+        # Conectamos el selector con nuestro callback de ordenamiento
+        st.selectbox("Orden en Collage", [1, 2, 3], key="ord_0", index=st.session_state.ordenes[0]-1, on_change=manejar_cambio_orden, args=(0,))
 
 with col2:
     img2_file = st.file_uploader("Archivo 2", type=['jpg', 'jpeg', 'png'])
     if img2_file:
+        img2_file.seek(0)
+        st.image(img2_file, width=150)
         autor2 = os.path.splitext(img2_file.name)[0]
         lugar2 = st.text_input("Ubicación (Archivo 2)", key="lugar2").strip().upper()
-        orden2 = st.selectbox("Orden en Collage", [1, 2, 3], index=1, key="ord2")
+        st.selectbox("Orden en Collage", [1, 2, 3], key="ord_1", index=st.session_state.ordenes[1]-1, on_change=manejar_cambio_orden, args=(1,))
 
 with col3:
     img3_file = st.file_uploader("Archivo 3", type=['jpg', 'jpeg', 'png'])
     if img3_file:
+        img3_file.seek(0)
+        st.image(img3_file, width=150)
         autor3 = os.path.splitext(img3_file.name)[0]
         lugar3 = st.text_input("Ubicación (Archivo 3)", key="lugar3").strip().upper()
-        orden3 = st.selectbox("Orden en Collage", [1, 2, 3], index=2, key="ord3")
+        st.selectbox("Orden en Collage", [1, 2, 3], key="ord_2", index=st.session_state.ordenes[2]-1, on_change=manejar_cambio_orden, args=(2,))
 
 st.divider()
 
@@ -264,7 +287,8 @@ with col_opc1:
 with col_opc2:
     aplicar_marco = st.checkbox("Aplicar marco a las fotos")
     estilo_marco = st.selectbox("Patrón del marco", ["Sólido", "Punteado", "Discontinuo"], disabled=not aplicar_marco)
-    doblar_marco = st.checkbox("Grosor del marco a 2px", disabled=not aplicar_marco)
+    # Reemplazado el checkbox por un slider hasta 5px
+    grosor_marco = st.slider("Grosor del marco (px)", min_value=1, max_value=5, value=1, step=1, disabled=not aplicar_marco)
 with col_opc3:
     color_marco_hex = st.color_picker("Color del marco", "#FFFFFF", disabled=not aplicar_marco)
 
@@ -274,10 +298,15 @@ if img1_file and img2_file and img3_file:
             if st.button("Generar Composición", type="primary", width='stretch'):
                 with st.spinner("Procesando datos gráficos..."):
                     try:
+                        # Aseguramos que los cursores estén en 0 antes de abrir
+                        img1_file.seek(0)
+                        img2_file.seek(0)
+                        img3_file.seek(0)
+                        
                         datos_imagenes_brutos = [
-                            {'img_obj': ImageOps.exif_transpose(Image.open(img1_file).convert("RGB")), 'autor': autor1, 'lugar': lugar1, 'orden': orden1},
-                            {'img_obj': ImageOps.exif_transpose(Image.open(img2_file).convert("RGB")), 'autor': autor2, 'lugar': lugar2, 'orden': orden2},
-                            {'img_obj': ImageOps.exif_transpose(Image.open(img3_file).convert("RGB")), 'autor': autor3, 'lugar': lugar3, 'orden': orden3}
+                            {'img_obj': ImageOps.exif_transpose(Image.open(img1_file).convert("RGB")), 'autor': autor1, 'lugar': lugar1, 'orden': st.session_state.ordenes[0]},
+                            {'img_obj': ImageOps.exif_transpose(Image.open(img2_file).convert("RGB")), 'autor': autor2, 'lugar': lugar2, 'orden': st.session_state.ordenes[1]},
+                            {'img_obj': ImageOps.exif_transpose(Image.open(img3_file).convert("RGB")), 'autor': autor3, 'lugar': lugar3, 'orden': st.session_state.ordenes[2]}
                         ]
 
                         datos_imagenes = sorted(datos_imagenes_brutos, key=lambda x: x['orden'])
@@ -290,14 +319,18 @@ if img1_file and img2_file and img3_file:
                         else:
                             paleta = extraer_colores_vibrantes(datos_imagenes)
 
-                        # Generamos la imagen
+                        # Procesamiento del logo fuera del core gráfico
+                        logo_img = None
+                        if logo_upload is not None:
+                            logo_upload.seek(0)
+                            logo_img = Image.open(logo_upload).convert("RGBA")
+
                         imagen_final = generar_collage(
-                            datos_imagenes, logo_upload, ruta_fuente_completa, 
-                            offset_texto, aplicar_marco, estilo_marco, color_marco_hex, doblar_marco, 
+                            datos_imagenes, logo_img, ruta_fuente_completa, 
+                            offset_texto, aplicar_marco, estilo_marco, color_marco_hex, grosor_marco, 
                             paleta
                         )
 
-                        # Guardamos en la memoria de sesión
                         st.session_state.img_final = imagen_final
                         
                         buf = io.BytesIO()
@@ -307,7 +340,6 @@ if img1_file and img2_file and img3_file:
                     except Exception as e:
                         st.error(f"Error interno de procesamiento: {e}")
             
-            # Dibujamos siempre desde la memoria de sesión, si existe
             if st.session_state.img_final is not None:
                 st.image(st.session_state.img_final, caption="Resultado Final", width='stretch')
                 
