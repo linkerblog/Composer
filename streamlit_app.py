@@ -95,6 +95,7 @@ def calcular_fuente_uniforme_global(textos, anchos_maximos, ruta_fuente, tamano_
     while tamano_actual > 12:
         todos_caben = True
         for texto, max_ancho in zip(textos, anchos_maximos):
+            if not texto: continue # Omitir cálculo si el texto está vacío
             bbox = draw.textbbox((0, 0), texto, font=fuente)
             if (bbox[2] - bbox[0]) > (max_ancho - 10):
                 todos_caben = False
@@ -108,7 +109,7 @@ def hex_a_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
-def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, aplicar_marco, estilo_marco, color_marco_hex, grosor_marco, colores):
+def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, extra_tamano_texto, aplicar_marco, estilo_marco, color_marco_hex, grosor_marco, colores):
     CONFIG = {
         'ANCHO_LIENZO': 1600, 'ALTO_LIENZO': 1147, 'MARGEN_SUPERIOR': 90,  
         'ESPACIADO_X': 24, 'MAX_ALTO_IMG': 580, 'MAX_ANCHO_TOTAL': 1500,
@@ -137,8 +138,9 @@ def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, aplic
     autores = [d['autor'] for d in datos_imagenes]
     lugares = [d['lugar'] for d in datos_imagenes]
 
-    fuente_n = calcular_fuente_uniforme_global(autores, anchos_permitidos_por_columna, ruta_fuente, CONFIG['TAMANO_BASE_NOMBRE'], draw)
-    fuente_l = calcular_fuente_uniforme_global(lugares, anchos_permitidos_por_columna, ruta_fuente, CONFIG['TAMANO_BASE_LUGAR'], draw)
+    # Sumamos el extra_tamano_texto a las bases configuradas
+    fuente_n = calcular_fuente_uniforme_global(autores, anchos_permitidos_por_columna, ruta_fuente, CONFIG['TAMANO_BASE_NOMBRE'] + extra_tamano_texto, draw)
+    fuente_l = calcular_fuente_uniforme_global(lugares, anchos_permitidos_por_columna, ruta_fuente, CONFIG['TAMANO_BASE_LUGAR'] + extra_tamano_texto, draw)
 
     max_y_texto_detectado = 0
     color_marco_rgb = hex_a_rgb(color_marco_hex)
@@ -165,12 +167,17 @@ def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, aplic
         y_texto_nombre = CONFIG['MARGEN_SUPERIOR'] + alto_final_img + 25 + offset_y_texto
         bbox_nombre = draw.textbbox((0, 0), d['autor'], font=fuente_n)
         draw.text((centro_img_x - ((bbox_nombre[2]-bbox_nombre[0]) / 2), y_texto_nombre), d['autor'], font=fuente_n, fill="white")
+        alto_nombre = bbox_nombre[3] - bbox_nombre[1]
         
-        y_texto_lugar = y_texto_nombre + (bbox_nombre[3]-bbox_nombre[1]) + 5 
-        bbox_lugar = draw.textbbox((0, 0), d['lugar'], font=fuente_l)
-        draw.text((centro_img_x - ((bbox_lugar[2]-bbox_lugar[0]) / 2), y_texto_lugar), d['lugar'], font=fuente_l, fill="white")
+        # Validar si existe lugar para dibujarlo y calcular alturas
+        y_texto_lugar = y_texto_nombre + alto_nombre + 5 
+        if d['lugar']:
+            bbox_lugar = draw.textbbox((0, 0), d['lugar'], font=fuente_l)
+            draw.text((centro_img_x - ((bbox_lugar[2]-bbox_lugar[0]) / 2), y_texto_lugar), d['lugar'], font=fuente_l, fill="white")
+            max_y_texto_detectado = max(max_y_texto_detectado, y_texto_lugar + (bbox_lugar[3]-bbox_lugar[1]))
+        else:
+            max_y_texto_detectado = max(max_y_texto_detectado, y_texto_nombre + alto_nombre)
 
-        max_y_texto_detectado = max(max_y_texto_detectado, y_texto_lugar + (bbox_lugar[3]-bbox_lugar[1]))
         pos_x_actual += d['nuevo_ancho'] + CONFIG['ESPACIADO_X']
 
     if logo_img is not None:
@@ -226,7 +233,7 @@ if img1_file and img2_file and img3_file:
             st.caption(f"**Autor:** {autores[real_idx]}")
             
             st.session_state.lugares[real_idx] = st.text_input(
-                "Ubicación", 
+                "Ubicación (Opcional)", 
                 value=st.session_state.lugares[real_idx], 
                 key=f"loc_{real_idx}"
             ).strip().upper()
@@ -239,63 +246,62 @@ if img1_file and img2_file and img3_file:
                 if visual_idx < 2:
                     st.button("Mover ▶", key=f"btn_der_{real_idx}", on_click=mover_der, args=(visual_idx,), width='stretch')
 
-    if not all(st.session_state.lugares):
-        st.warning("Completa todas las ubicaciones para habilitar la generación.")
-    else:
-        st.divider()
-        st.write("### 3. Opciones Adicionales")
-        # Aquí está la corrección: ahora acepta la familia entera de imágenes para el logotipo
-        logo_upload = st.file_uploader("Logotipo (Opcional)", type=['jpg', 'jpeg', 'png'])
-        
-        c_opc1, c_opc2, c_opc3 = st.columns(3)
-        with c_opc1:
-            offset_texto = st.slider("Ajuste de textos (px)", -50, 50, 0, step=5)
-            usar_aleatorio = st.checkbox("Usar paleta aleatoria", False)
-        with c_opc2:
-            aplicar_marco = st.checkbox("Aplicar marco a fotos")
-            estilo_marco = st.selectbox("Patrón", ["Sólido", "Punteado", "Discontinuo"], disabled=not aplicar_marco)
-            grosor_marco = st.slider("Grosor (px)", 1, 5, 1, disabled=not aplicar_marco)
-        with c_opc3:
-            color_marco = st.color_picker("Color", "#FFFFFF", disabled=not aplicar_marco)
+    # Eliminada la restricción de ubicaciones obligatorias
+    st.divider()
+    st.write("### 3. Opciones Adicionales")
+    logo_upload = st.file_uploader("Logotipo (Opcional)", type=['jpg', 'jpeg', 'png'])
+    
+    c_opc1, c_opc2, c_opc3 = st.columns(3)
+    with c_opc1:
+        offset_texto = st.slider("Ajuste de posición Y textos (px)", -50, 50, 0, step=5)
+        extra_tamano_texto = st.slider("Aumento tamaño fuente (px)", 0, 40, 0, step=2) # NUEVO SLIDER
+        usar_aleatorio = st.checkbox("Usar paleta aleatoria", False)
+    with c_opc2:
+        aplicar_marco = st.checkbox("Aplicar marco a fotos")
+        estilo_marco = st.selectbox("Patrón", ["Sólido", "Punteado", "Discontinuo"], disabled=not aplicar_marco)
+        grosor_marco = st.slider("Grosor (px)", 1, 5, 1, disabled=not aplicar_marco)
+    with c_opc3:
+        color_marco = st.color_picker("Color", "#FFFFFF", disabled=not aplicar_marco)
 
-        if st.button("Generar Composición", type="primary", width='stretch'):
-            with st.spinner("Procesando matriz gráfica..."):
-                try:
-                    datos_brutos = []
-                    for r_idx in range(3):
-                        archivos[r_idx].seek(0)
-                        img_full = ImageOps.exif_transpose(Image.open(archivos[r_idx]).convert("RGB"))
-                        pos_visual = st.session_state.orden.index(r_idx)
-                        datos_brutos.append({
-                            'img_obj': img_full, 'autor': autores[r_idx], 
-                            'lugar': st.session_state.lugares[r_idx], 'orden': pos_visual
-                        })
-                    
-                    datos_imagenes = sorted(datos_brutos, key=lambda x: x['orden'])
-                    for d in datos_imagenes: d['ratio'] = d['img_obj'].width / d['img_obj'].height
+    if st.button("Generar Composición", type="primary", width='stretch'):
+        with st.spinner("Procesando matriz gráfica..."):
+            try:
+                datos_brutos = []
+                for r_idx in range(3):
+                    archivos[r_idx].seek(0)
+                    img_full = ImageOps.exif_transpose(Image.open(archivos[r_idx]).convert("RGB"))
+                    pos_visual = st.session_state.orden.index(r_idx)
+                    datos_brutos.append({
+                        'img_obj': img_full, 'autor': autores[r_idx], 
+                        'lugar': st.session_state.lugares[r_idx], 'orden': pos_visual
+                    })
+                
+                datos_imagenes = sorted(datos_brutos, key=lambda x: x['orden'])
+                for d in datos_imagenes: d['ratio'] = d['img_obj'].width / d['img_obj'].height
 
-                    paleta = generar_paleta_analoga() if usar_aleatorio else extraer_colores_vibrantes(datos_imagenes)
-                    
-                    logo_img = None
-                    if logo_upload:
-                        logo_upload.seek(0)
-                        logo_img = Image.open(logo_upload).convert("RGBA")
+                paleta = generar_paleta_analoga() if usar_aleatorio else extraer_colores_vibrantes(datos_imagenes)
+                
+                logo_img = None
+                if logo_upload:
+                    logo_upload.seek(0)
+                    logo_img = Image.open(logo_upload).convert("RGBA")
 
-                    final = generar_collage(
-                        datos_imagenes, logo_img, ruta_fuente, offset_texto, 
-                        aplicar_marco, estilo_marco, color_marco, grosor_marco, paleta
-                    )
+                # Pasamos extra_tamano_texto a la función
+                final = generar_collage(
+                    datos_imagenes, logo_img, ruta_fuente, offset_texto, extra_tamano_texto,
+                    aplicar_marco, estilo_marco, color_marco, grosor_marco, paleta
+                )
 
-                    st.session_state.img_final = final
-                    buf = io.BytesIO()
-                    final.save(buf, format="JPEG", quality=95)
-                    st.session_state.img_bytes = buf.getvalue()
+                st.session_state.img_final = final
+                buf = io.BytesIO()
+                final.save(buf, format="JPEG", quality=95)
+                st.session_state.img_bytes = buf.getvalue()
 
-                except Exception as e:
-                    st.error(f"Error crítico en renderizado: {e}")
-        
-        if st.session_state.img_final:
-            st.image(st.session_state.img_final, width='stretch')
-            st.download_button("Descargar Composición", st.session_state.img_bytes, "composicion.jpeg", "image/jpeg", width='stretch')
+            except Exception as e:
+                st.error(f"Error crítico en renderizado: {e}")
+    
+    if st.session_state.img_final:
+        st.image(st.session_state.img_final, width='stretch')
+        st.download_button("Descargar Composición", st.session_state.img_bytes, "composicion.jpeg", "image/jpeg", width='stretch')
 else:
     st.info("Esperando los tres archivos en la cabecera...")
