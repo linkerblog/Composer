@@ -34,7 +34,6 @@ def clear_field(key):
 
 # --- LÓGICA DE PATRÓN DE FONDO (SVG) ---
 def obtener_patron_css():
-    # Usamos ruta absoluta para evitar problemas de contexto
     dir_vector = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vector")
     
     if not os.path.exists(dir_vector):
@@ -48,30 +47,40 @@ def obtener_patron_css():
     if not svg_files:
         return ""
     
-    svg_patterns = []
-    # Tomamos los primeros iconos para crear la capa del patrón
-    for i, f in enumerate(svg_files[:10]): 
+    svg_layers = []
+    positions = []
+    sizes = []
+    
+    # Usamos hasta 8 iconos para crear capas superpuestas con separación
+    for i, f in enumerate(svg_files[:8]): 
         path = os.path.join(dir_vector, f)
         try:
             with open(path, "r", encoding="utf-8") as svg_file:
                 svg_data = svg_file.read()
-                # Codificamos a base64 para inyectar en CSS sin problemas de caracteres
                 svg_encoded = base64.b64encode(svg_data.encode('utf-8')).decode('utf-8')
-                svg_patterns.append(f"url('data:image/svg+xml;base64,{svg_encoded}')")
+                svg_layers.append(f"url('data:image/svg+xml;base64,{svg_encoded}')")
+                
+                # Generamos "aleatoriedad" basada en el índice para que sea consistente entre reruns
+                offset_x = (i * 37) % 100
+                offset_y = (i * 23) % 100
+                scale = 250 + (i * 70) % 300
+                
+                positions.append(f"{offset_x}% {offset_y}%")
+                sizes.append(f"{scale}px {scale}px")
         except:
             continue
     
-    if not svg_patterns:
+    if not svg_layers:
         return ""
 
-    # Configuramos el fondo repetitivo
-    # background-size controla qué tan grandes se ven los iconos en el fondo
+    # Configuramos el fondo con múltiples capas, posiciones y tamaños
     css_bg = f"""
-    background-image: {', '.join(svg_patterns)};
-    background-size: 200px 200px;
+    background-image: {', '.join(svg_layers)};
+    background-position: {', '.join(positions)};
+    background-size: {', '.join(sizes)};
     background-repeat: repeat;
-    opacity: 0.18;
-    filter: brightness(0) invert(1); /* Forzamos a que sean blancos para que se vean en el azul oscuro */
+    opacity: 0.08;
+    filter: brightness(0) invert(1); /* Los hace blancos sutiles */
     """
     return css_bg
 
@@ -79,13 +88,11 @@ def obtener_patron_css():
 pattern_css = obtener_patron_css()
 st.markdown(f"""
     <style>
-    /* El gradiente azul oscuro principal */
     .stApp {{
         background: linear-gradient(135deg, #050a18 0%, #0a1128 50%, #0d1b3e 100%) !important;
         color: #FFFFFF;
     }}
     
-    /* Capa del Hero Pattern */
     .stApp::before {{
         content: "";
         position: fixed;
@@ -98,13 +105,11 @@ st.markdown(f"""
         z-index: 0;
     }}
 
-    /* Ajuste para que el contenido esté sobre el patrón */
     .stApp > header, .stApp > .main {{
         position: relative;
         z-index: 1;
     }}
 
-    /* Estilo para los inputs */
     .stTextInput>div>div>input {{
         background-color: rgba(255, 255, 255, 0.07);
         color: white;
@@ -266,11 +271,11 @@ if img1 and img2 and img3:
             st.markdown("**Nombre / Archivo**")
             cn, ct = st.columns([0.78, 0.22], vertical_alignment="bottom")
             with cn: st.text_input("N", key=f"input_nombre_{r_i}", label_visibility="collapsed")
-            with ct: st.button("🗑️", key=f"cn_{r_i}", on_click=clear_field, args=(f"input_nombre_{r_i}",))
+            with ct: st.button("🗑️", key=f"clear_name_{r_i}", on_click=clear_field, args=(f"input_nombre_{r_i}",))
             st.markdown("**Info Extra**")
             ci, cti = st.columns([0.78, 0.22], vertical_alignment="bottom")
             with ci: st.text_input("I", key=f"input_lugar_{r_i}", label_visibility="collapsed")
-            with cti: st.button("🗑️", key=f"ci_{r_i}", on_click=clear_field, args=(f"input_lugar_{r_i}",))
+            with cti: st.button("🗑️", key=f"clear_info_{r_i}", on_click=clear_field, args=(f"input_lugar_{r_i}",))
             cl, cr = st.columns(2)
             with cl: 
                 if v_i > 0: st.button("◀", key=f"ml_{r_i}", on_click=mover_izq, args=(v_i,), use_container_width=True)
