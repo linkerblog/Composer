@@ -305,7 +305,7 @@ if img1_file and img2_file and img3_file:
                     pos_visual = st.session_state.orden.index(r_idx)
                     datos_brutos.append({
                         'img_obj': img_full, 
-                        'autor': st.session_state.nombres[r_idx], # Ahora usa el estado editable
+                        'autor': st.session_state.nombres[r_idx],
                         'lugar': st.session_state.lugares[r_idx], 
                         'orden': pos_visual
                     })
