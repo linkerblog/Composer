@@ -28,7 +28,7 @@ def mover_der(v_idx):
     st.session_state.orden[v_idx], st.session_state.orden[v_idx+1] = st.session_state.orden[v_idx+1], st.session_state.orden[v_idx]
 
 def clear_field(key):
-    """Limpia el campo de texto y fuerza la actualización del estado"""
+    """Limpia el campo de texto modificando el session_state directamente"""
     if key in st.session_state:
         st.session_state[key] = ""
 
@@ -37,9 +37,12 @@ def obtener_polka_dots_css():
     """Lee el archivo polka-dots.svg y lo convierte en un patrón CSS sutil pero visible"""
     path_svg = "polka-dots.svg"
     if os.path.exists(path_svg):
-        with open(path_svg, "rb") as f:
-            svg_encoded = base64.b64encode(f.read()).decode('utf-8')
-            return f"url('data:image/svg+xml;base64,{svg_encoded}')"
+        try:
+            with open(path_svg, "rb") as f:
+                svg_encoded = base64.b64encode(f.read()).decode('utf-8')
+                return f"url('data:image/svg+xml;base64,{svg_encoded}')"
+        except:
+            pass
     return ""
 
 # --- INYECCIÓN DE CSS PARA EL BACKGROUND DE LA APP ---
@@ -53,7 +56,7 @@ st.markdown(f"""
         color: #FFFFFF;
     }}
     
-    /* Capa de Polka Dots (Hero Pattern) - Opacidad aumentada para visibilidad */
+    /* Capa de Polka Dots (Hero Pattern) */
     .stApp::before {{
         content: "";
         position: fixed;
@@ -61,7 +64,7 @@ st.markdown(f"""
         background-image: {dots_url};
         background-size: 60px 60px;
         background-repeat: repeat;
-        opacity: 0.12; /* Aumentado de 0.04 para ser visible */
+        opacity: 0.12; 
         pointer-events: none;
         z-index: 0;
     }}
@@ -130,14 +133,21 @@ def dibujar_degradado_avanzado(lienzo, colores):
     lienzo.paste(img_b.resize((ancho, alto), Image.Resampling.LANCZOS))
 
 def calcular_fuente_uniforme_global(textos, anchos_maximos, ruta_fuente, tamano_inicial, draw):
+    """Calcula el tamaño de fuente para que el texto quepa, pero con más tolerancia"""
     tam_a = tamano_inicial
+    if not ruta_fuente:
+        return ImageFont.load_default()
+    
     fuente = ImageFont.truetype(ruta_fuente, tam_a)
     while tam_a > 12:
         caben = True
         for t, m_w in zip(textos, anchos_maximos):
             if not t: continue
             bbox = draw.textbbox((0, 0), t, font=fuente)
-            if (bbox[2] - bbox[0]) > (m_w - 10): caben = False; break
+            # Damos 50px extra de margen para que el slider de aumento funcione mejor
+            if (bbox[2] - bbox[0]) > (m_w + 50): 
+                caben = False
+                break
         if caben: break
         tam_a -= 2
         fuente = ImageFont.truetype(ruta_fuente, tam_a)
@@ -154,16 +164,22 @@ def generar_collage(datos_imagenes, logo_img, ruta_fuente, off_y_t, off_y_f, ex_
     draw = ImageDraw.Draw(lienzo)
     suma_r = sum(d['ratio'] for d in datos_imagenes)
     h_f = int(min(cfg['M_H'], (cfg['M_W'] - (cfg['GAP']*2)) / suma_r))
+    
     anchos_c = []
     for d in datos_imagenes:
         d['w_r'] = int(h_f * d['ratio'])
         d['i_r'] = d['img_obj'].resize((d['w_r'], h_f), Image.Resampling.LANCZOS)
         anchos_c.append(d['w_r'] + cfg['GAP'])
+    
     pos_x = (cfg['W'] - (sum(d['w_r'] for d in datos_imagenes) + cfg['GAP']*2)) // 2
+    
+    # Calculamos fuentes (ahora con soporte para el slider de aumento)
     f_n = calcular_fuente_uniforme_global([d['autor'] for d in datos_imagenes], anchos_c, ruta_fuente, 48 + ex_t, draw)
     f_l = calcular_fuente_uniforme_global([d['lugar'] for d in datos_imagenes], anchos_c, ruta_fuente, 72 + ex_t, draw)
+    
     max_y, c_m_rgb = 0, hex_a_rgb(c_marco_hex)
     pos_y = cfg['TOP'] + off_y_f
+    
     for d in datos_imagenes:
         lienzo.paste(d['i_r'], (pos_x, pos_y))
         if marco:
@@ -177,17 +193,22 @@ def generar_collage(datos_imagenes, logo_img, ruta_fuente, off_y_t, off_y_f, ex_
                 for y in range(y0, y1 + 1, p):
                     draw.line([(x0, y), (x0, min(y+l-1, y1))], fill=c_m_rgb, width=g_marco)
                     draw.line([(x1, y), (x1, min(y+l-1, y1))], fill=c_m_rgb, width=g_marco)
-        c_x = pos_x + (d['w_r'] // 2)
+        
+        centro_img_x = pos_x + (d['w_r'] // 2)
         y_n = pos_y + h_f + 25 + off_y_t
         bb_n = draw.textbbox((0, 0), d['autor'], font=f_n)
-        draw.text((c_x - ((bb_n[2]-bb_n[0])/2), y_n), d['autor'], font=f_n, fill="white")
+        draw.text((centro_img_x - ((bb_n[2]-bb_n[0])/2), y_n), d['autor'], font=f_n, fill="white")
+        
         y_l = y_n + (bb_n[3]-bb_n[1]) + 5
         if d['lugar']:
             bb_l = draw.textbbox((0, 0), d['lugar'], font=f_l)
-            draw.text((c_x - ((bb_l[2]-bb_l[0])/2), y_l), d['lugar'], font=f_l, fill="white")
+            draw.text((centro_img_x - ((bb_l[2]-bb_l[0])/2), y_l), d['lugar'], font=f_l, fill="white")
             max_y = max(max_y, y_l + (bb_l[3]-bb_l[1]))
-        else: max_y = max(max_y, y_n + (bb_n[3]-bb_n[1]))
+        else: 
+            max_y = max(max_y, y_n + (bb_n[3]-bb_n[1]))
+        
         pos_x += d['w_r'] + cfg['GAP']
+        
     if logo_img:
         l_h = int(float(logo_img.size[1]) * (tam_l / float(logo_img.size[0])))
         l_p = logo_img.resize((tam_l, l_h), Image.Resampling.LANCZOS)
@@ -234,10 +255,12 @@ if img1 and img2 and img3:
             cn, ct = st.columns([0.78, 0.22], vertical_alignment="bottom")
             with cn: st.text_input("N", key=f"input_nombre_{r_i}", label_visibility="collapsed")
             with ct: st.button("🗑️", key=f"clear_name_{r_i}", on_click=clear_field, args=(f"input_nombre_{r_i}",))
+            
             st.markdown("**Info Extra**")
             ci, cti = st.columns([0.78, 0.22], vertical_alignment="bottom")
             with ci: st.text_input("I", key=f"input_lugar_{r_i}", label_visibility="collapsed")
             with cti: st.button("🗑️", key=f"clear_info_{r_i}", on_click=clear_field, args=(f"input_lugar_{r_i}",))
+            
             cl, cr = st.columns(2)
             with cl: 
                 if v_i > 0: st.button("◀ Mover", key=f"ml_{r_i}", on_click=mover_izq, args=(v_i,), use_container_width=True)
@@ -251,7 +274,8 @@ if img1 and img2 and img3:
     with c1:
         o_t = st.slider("Posición Y textos (px)", -100, 100, 0, 5)
         o_f = st.slider("Posición Y fotos (px)", -200, 200, 0, 2)
-        e_t = st.slider("Aumento fuente (px)", 0, 40, 0, 2)
+        # Aumentamos el rango de aumento de fuente para que se note más
+        e_t = st.slider("Aumento fuente (px)", 0, 80, 0, 2)
     with c2:
         t_l = st.slider("Tamaño Logo (px)", 50, 800, 260, 10)
         u_a = st.checkbox("Fondo de composición aleatorio")
