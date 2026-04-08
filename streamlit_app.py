@@ -18,6 +18,8 @@ if 'orden' not in st.session_state:
     st.session_state.orden = [0, 1, 2]
 if 'lugares' not in st.session_state:
     st.session_state.lugares = ["", "", ""]
+if 'last_files_hash' not in st.session_state:
+    st.session_state.last_files_hash = None
 
 # --- FUNCIONES DE NAVEGACIÓN (CALLBACKS) ---
 def mover_izq(v_idx):
@@ -25,6 +27,9 @@ def mover_izq(v_idx):
 
 def mover_der(v_idx):
     st.session_state.orden[v_idx], st.session_state.orden[v_idx+1] = st.session_state.orden[v_idx+1], st.session_state.orden[v_idx]
+
+def vaciar_info(idx):
+    st.session_state.lugares[idx] = ""
 
 # --- FUNCIONES GRÁFICAS ---
 def generar_paleta_analoga():
@@ -95,7 +100,7 @@ def calcular_fuente_uniforme_global(textos, anchos_maximos, ruta_fuente, tamano_
     while tamano_actual > 12:
         todos_caben = True
         for texto, max_ancho in zip(textos, anchos_maximos):
-            if not texto: continue # Omitir cálculo si el texto está vacío
+            if not texto: continue 
             bbox = draw.textbbox((0, 0), texto, font=fuente)
             if (bbox[2] - bbox[0]) > (max_ancho - 10):
                 todos_caben = False
@@ -138,7 +143,6 @@ def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, extra
     autores = [d['autor'] for d in datos_imagenes]
     lugares = [d['lugar'] for d in datos_imagenes]
 
-    # Sumamos el extra_tamano_texto a las bases configuradas
     fuente_n = calcular_fuente_uniforme_global(autores, anchos_permitidos_por_columna, ruta_fuente, CONFIG['TAMANO_BASE_NOMBRE'] + extra_tamano_texto, draw)
     fuente_l = calcular_fuente_uniforme_global(lugares, anchos_permitidos_por_columna, ruta_fuente, CONFIG['TAMANO_BASE_LUGAR'] + extra_tamano_texto, draw)
 
@@ -169,7 +173,6 @@ def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, extra
         draw.text((centro_img_x - ((bbox_nombre[2]-bbox_nombre[0]) / 2), y_texto_nombre), d['autor'], font=fuente_n, fill="white")
         alto_nombre = bbox_nombre[3] - bbox_nombre[1]
         
-        # Validar si existe lugar para dibujarlo y calcular alturas
         y_texto_lugar = y_texto_nombre + alto_nombre + 5 
         if d['lugar']:
             bbox_lugar = draw.textbbox((0, 0), d['lugar'], font=fuente_l)
@@ -219,6 +222,11 @@ if img1_file and img2_file and img3_file:
     archivos = [img1_file, img2_file, img3_file]
     autores = [os.path.splitext(f.name)[0] for f in archivos]
     
+    current_files_hash = "".join([f.name for f in archivos])
+    if st.session_state.last_files_hash != current_files_hash:
+        st.session_state.lugares = [name for name in autores]
+        st.session_state.last_files_hash = current_files_hash
+    
     miniaturas = []
     for f in archivos:
         f.seek(0)
@@ -232,11 +240,20 @@ if img1_file and img2_file and img3_file:
             st.image(miniaturas[real_idx], width='stretch')
             st.caption(f"**Autor:** {autores[real_idx]}")
             
-            st.session_state.lugares[real_idx] = st.text_input(
-                "Ubicación (Opcional)", 
-                value=st.session_state.lugares[real_idx], 
-                key=f"loc_{real_idx}"
-            ).strip().upper()
+            # Layout para input de texto y botón de borrado
+            c_input, c_clear = st.columns([0.8, 0.2])
+            with c_input:
+                st.session_state.lugares[real_idx] = st.text_input(
+                    "Info Extra", 
+                    value=st.session_state.lugares[real_idx], 
+                    key=f"loc_{real_idx}"
+                ).strip().upper()
+            with c_clear:
+                st.write("") # Espaciador para alinear con el label
+                st.write("")
+                if st.button("🗑️", key=f"btn_clr_{real_idx}", help="Vaciar este campo"):
+                    st.session_state.lugares[real_idx] = ""
+                    st.rerun()
             
             c_izq, c_der = st.columns(2)
             with c_izq:
@@ -246,7 +263,6 @@ if img1_file and img2_file and img3_file:
                 if visual_idx < 2:
                     st.button("Mover ▶", key=f"btn_der_{real_idx}", on_click=mover_der, args=(visual_idx,), width='stretch')
 
-    # Eliminada la restricción de ubicaciones obligatorias
     st.divider()
     st.write("### 3. Opciones Adicionales")
     logo_upload = st.file_uploader("Logotipo (Opcional)", type=['jpg', 'jpeg', 'png'])
@@ -254,7 +270,7 @@ if img1_file and img2_file and img3_file:
     c_opc1, c_opc2, c_opc3 = st.columns(3)
     with c_opc1:
         offset_texto = st.slider("Ajuste de posición Y textos (px)", -50, 50, 0, step=5)
-        extra_tamano_texto = st.slider("Aumento tamaño fuente (px)", 0, 40, 0, step=2) # NUEVO SLIDER
+        extra_tamano_texto = st.slider("Aumento tamaño fuente (px)", 0, 40, 0, step=2) 
         usar_aleatorio = st.checkbox("Usar paleta aleatoria", False)
     with c_opc2:
         aplicar_marco = st.checkbox("Aplicar marco a fotos")
@@ -286,7 +302,6 @@ if img1_file and img2_file and img3_file:
                     logo_upload.seek(0)
                     logo_img = Image.open(logo_upload).convert("RGBA")
 
-                # Pasamos extra_tamano_texto a la función
                 final = generar_collage(
                     datos_imagenes, logo_img, ruta_fuente, offset_texto, extra_tamano_texto,
                     aplicar_marco, estilo_marco, color_marco, grosor_marco, paleta
