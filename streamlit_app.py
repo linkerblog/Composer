@@ -16,10 +16,6 @@ if 'img_bytes' not in st.session_state:
     st.session_state.img_bytes = None
 if 'orden' not in st.session_state:
     st.session_state.orden = [0, 1, 2]
-if 'nombres' not in st.session_state:
-    st.session_state.nombres = ["", "", ""]
-if 'lugares' not in st.session_state:
-    st.session_state.lugares = ["", "", ""]
 if 'last_files_hash' not in st.session_state:
     st.session_state.last_files_hash = None
 
@@ -29,6 +25,9 @@ def mover_izq(v_idx):
 
 def mover_der(v_idx):
     st.session_state.orden[v_idx], st.session_state.orden[v_idx+1] = st.session_state.orden[v_idx+1], st.session_state.orden[v_idx]
+
+def clear_field(key):
+    st.session_state[key] = ""
 
 # --- FUNCIONES GRÁFICAS ---
 def generar_paleta_analoga():
@@ -113,7 +112,7 @@ def hex_a_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
-def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, extra_tamano_texto, aplicar_marco, estilo_marco, color_marco_hex, grosor_marco, colores):
+def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, offset_y_fotos, extra_tamano_texto, tamano_logo, aplicar_marco, estilo_marco, color_marco_hex, grosor_marco, colores):
     CONFIG = {
         'ANCHO_LIENZO': 1600, 'ALTO_LIENZO': 1147, 'MARGEN_SUPERIOR': 90,  
         'ESPACIADO_X': 24, 'MAX_ALTO_IMG': 580, 'MAX_ANCHO_TOTAL': 1500,
@@ -148,12 +147,14 @@ def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, extra
     max_y_texto_detectado = 0
     color_marco_rgb = hex_a_rgb(color_marco_hex)
 
+    pos_y_fotos = CONFIG['MARGEN_SUPERIOR'] + offset_y_fotos
+
     for d in datos_imagenes:
-        lienzo.paste(d['img_redimensionada'], (pos_x_actual, CONFIG['MARGEN_SUPERIOR']))
+        lienzo.paste(d['img_redimensionada'], (pos_x_actual, pos_y_fotos))
         
         if aplicar_marco:
-            x0, y0 = pos_x_actual, CONFIG['MARGEN_SUPERIOR']
-            x1, y1 = pos_x_actual + d['nuevo_ancho'] - 1, CONFIG['MARGEN_SUPERIOR'] + alto_final_img - 1
+            x0, y0 = pos_x_actual, pos_y_fotos
+            x1, y1 = pos_x_actual + d['nuevo_ancho'] - 1, pos_y_fotos + alto_final_img - 1
             if estilo_marco == "Sólido":
                 draw.rectangle([x0, y0, x1, y1], outline=color_marco_rgb, width=grosor_marco)
             else:
@@ -167,7 +168,7 @@ def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, extra
 
         centro_img_x = pos_x_actual + (d['nuevo_ancho'] // 2)
 
-        y_texto_nombre = CONFIG['MARGEN_SUPERIOR'] + alto_final_img + 25 + offset_y_texto
+        y_texto_nombre = pos_y_fotos + alto_final_img + 25 + offset_y_texto
         bbox_nombre = draw.textbbox((0, 0), d['autor'], font=fuente_n)
         draw.text((centro_img_x - ((bbox_nombre[2]-bbox_nombre[0]) / 2), y_texto_nombre), d['autor'], font=fuente_n, fill="white")
         alto_nombre = bbox_nombre[3] - bbox_nombre[1]
@@ -183,7 +184,7 @@ def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, extra
         pos_x_actual += d['nuevo_ancho'] + CONFIG['ESPACIADO_X']
 
     if logo_img is not None:
-        ancho_logo = 260 
+        ancho_logo = tamano_logo 
         alto_logo = int(float(logo_img.size[1]) * (ancho_logo / float(logo_img.size[0])))
         logo_procesado = logo_img.resize((ancho_logo, alto_logo), Image.Resampling.LANCZOS)
         pos_x_logo = (CONFIG['ANCHO_LIENZO'] - ancho_logo) // 2
@@ -220,11 +221,12 @@ if img1_file and img2_file and img3_file:
     st.write("### 2. Orden y Ubicaciones")
     archivos = [img1_file, img2_file, img3_file]
     
-    # Lógica de detección de nuevos archivos para inicializar estados
+    # Lógica de detección de nuevos archivos para inicializar estados solo cuando cambian los archivos
     current_files_hash = "".join([f.name for f in archivos])
     if st.session_state.last_files_hash != current_files_hash:
-        st.session_state.nombres = [os.path.splitext(f.name)[0] for f in archivos]
-        st.session_state.lugares = ["", "", ""]
+        for i, f in enumerate(archivos):
+            st.session_state[f"input_nombre_{i}"] = os.path.splitext(f.name)[0]
+            st.session_state[f"input_lugar_{i}"] = ""
         st.session_state.last_files_hash = current_files_hash
     
     miniaturas = []
@@ -243,31 +245,17 @@ if img1_file and img2_file and img3_file:
             st.markdown("**Nombre / Archivo**")
             c_name, c_trash_name = st.columns([0.78, 0.22], vertical_alignment="bottom")
             with c_name:
-                st.session_state.nombres[real_idx] = st.text_input(
-                    "Nombre", 
-                    value=st.session_state.nombres[real_idx], 
-                    key=f"input_nombre_{real_idx}",
-                    label_visibility="collapsed"
-                ).strip()
+                st.text_input("Nombre", key=f"input_nombre_{real_idx}", label_visibility="collapsed").strip()
             with c_trash_name:
-                if st.button("🗑️", key=f"clear_name_{real_idx}", help="Borrar nombre"):
-                    st.session_state.nombres[real_idx] = ""
-                    st.rerun()
+                st.button("🗑️", key=f"clear_name_{real_idx}", on_click=clear_field, args=(f"input_nombre_{real_idx}",))
 
             # --- INPUT INFO EXTRA ---
             st.markdown("**Info Extra**")
             c_info, c_trash_info = st.columns([0.78, 0.22], vertical_alignment="bottom")
             with c_info:
-                st.session_state.lugares[real_idx] = st.text_input(
-                    "Info Extra", 
-                    value=st.session_state.lugares[real_idx], 
-                    key=f"input_lugar_{real_idx}",
-                    label_visibility="collapsed"
-                ).strip().upper()
+                st.text_input("Info Extra", key=f"input_lugar_{real_idx}", label_visibility="collapsed").strip().upper()
             with c_trash_info:
-                if st.button("🗑️", key=f"clear_info_{real_idx}", help="Vaciar campo"):
-                    st.session_state.lugares[real_idx] = ""
-                    st.rerun()
+                st.button("🗑️", key=f"clear_info_{real_idx}", on_click=clear_field, args=(f"input_lugar_{real_idx}",))
             
             # Controles de movimiento
             st.write("")
@@ -285,18 +273,20 @@ if img1_file and img2_file and img3_file:
     
     c_opc1, c_opc2, c_opc3 = st.columns(3)
     with c_opc1:
-        offset_texto = st.slider("Ajuste de posición Y textos (px)", -50, 50, 0, step=5)
-        extra_tamano_texto = st.slider("Aumento tamaño fuente (px)", 0, 40, 0, step=2) 
-        usar_aleatorio = st.checkbox("Usar paleta aleatoria", False)
+        offset_texto = st.slider("Posición Y textos (px)", -100, 100, 0, step=5)
+        offset_fotos = st.slider("Posición Y fotos (px)", -200, 200, 0, step=2)
+        extra_tamano_texto = st.slider("Aumento fuente (px)", 0, 40, 0, step=2) 
     with c_opc2:
-        aplicar_marco = st.checkbox("Aplicar marco a fotos")
-        estilo_marco = st.selectbox("Patrón", ["Sólido", "Punteado", "Discontinuo"], disabled=not aplicar_marco)
-        grosor_marco = st.slider("Grosor (px)", 1, 5, 1, disabled=not aplicar_marco)
+        tamano_logo = st.slider("Tamaño Logo (px)", 50, 500, 260, step=10)
+        usar_aleatorio = st.checkbox("Paleta aleatoria")
+        aplicar_marco = st.checkbox("Marco fotos")
     with c_opc3:
+        estilo_marco = st.selectbox("Patrón", ["Sólido", "Punteado", "Discontinuo"], disabled=not aplicar_marco)
+        grosor_marco = st.slider("Grosor (px)", 1, 10, 1, disabled=not aplicar_marco)
         color_marco = st.color_picker("Color", "#FFFFFF", disabled=not aplicar_marco)
 
     if st.button("Generar Composición", type="primary", use_container_width=True):
-        with st.spinner("Procesando matriz gráfica..."):
+        with st.spinner("Pintando el lienzo digital..."):
             try:
                 datos_brutos = []
                 for r_idx in range(3):
@@ -305,8 +295,8 @@ if img1_file and img2_file and img3_file:
                     pos_visual = st.session_state.orden.index(r_idx)
                     datos_brutos.append({
                         'img_obj': img_full, 
-                        'autor': st.session_state.nombres[r_idx],
-                        'lugar': st.session_state.lugares[r_idx], 
+                        'autor': st.session_state[f"input_nombre_{r_idx}"],
+                        'lugar': st.session_state[f"input_lugar_{r_idx}"], 
                         'orden': pos_visual
                     })
                 
@@ -321,8 +311,9 @@ if img1_file and img2_file and img3_file:
                     logo_img = Image.open(logo_upload).convert("RGBA")
 
                 final = generar_collage(
-                    datos_imagenes, logo_img, ruta_fuente, offset_texto, extra_tamano_texto,
-                    aplicar_marco, estilo_marco, color_marco, grosor_marco, paleta
+                    datos_imagenes, logo_img, ruta_fuente, offset_texto, offset_fotos, 
+                    extra_tamano_texto, tamano_logo, aplicar_marco, estilo_marco, 
+                    color_marco, grosor_marco, paleta
                 )
 
                 st.session_state.img_final = final
@@ -337,4 +328,4 @@ if img1_file and img2_file and img3_file:
         st.image(st.session_state.img_final, use_container_width=True)
         st.download_button("Descargar Composición", st.session_state.img_bytes, "composicion.jpeg", "image/jpeg", use_container_width=True)
 else:
-    st.info("Esperando los tres archivos en la cabecera...")
+    st.info("Sube las tres fotos para empezar a componer...")
