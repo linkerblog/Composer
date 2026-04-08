@@ -28,36 +28,40 @@ def mover_der(v_idx):
     st.session_state.orden[v_idx], st.session_state.orden[v_idx+1] = st.session_state.orden[v_idx+1], st.session_state.orden[v_idx]
 
 def clear_field(key):
-    """Limpia el campo de texto y asegura el borrado en el session_state"""
-    if key in st.session_state:
-        st.session_state[key] = ""
+    """Limpia el campo de texto y fuerza la actualización del estado"""
+    st.session_state[key] = ""
 
-# --- LÓGICA DE HERO PATTERN CSS ---
-def obtener_hero_pattern():
-    """
-    Retorna el CSS para un Hero Pattern de 'Circuit Board'.
-    Es mucho más eficiente que procesar SVGs locales uno por uno para el fondo.
-    """
-    return """
-    background-color: #050a18;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='304' height='304' viewBox='0 0 304 304'%3E%3Cpath fill='%239C92AC' fill-opacity='0.05' d='M44.1 224a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm160 0a5 5 0 1 1 0 2 5 5 0 0 1 0-2zM16 160a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm32 32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm0-32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm128 0a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm32 32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm0-32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm-128 0a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm32 32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm0-32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm-128 0a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm32 32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm0-32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm-128 0a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm32 32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm0-32a5 5 0 1 1 0 2 5 5 0 0 1 0-2z'/%3E%3C/svg%3E");
-    """
+# --- LÓGICA DE HERO PATTERN (POLKA DOTS SVG) ---
+def obtener_polka_dots_css():
+    """Lee el archivo polka-dots.svg y lo convierte en un patrón CSS sutil"""
+    path_svg = "polka-dots.svg"
+    if os.path.exists(path_svg):
+        with open(path_svg, "rb") as f:
+            svg_encoded = base64.b64encode(f.read()).decode('utf-8')
+            return f"url('data:image/svg+xml;base64,{svg_encoded}')"
+    # Fallback si el archivo no está
+    return ""
 
 # --- INYECCIÓN DE CSS PARA EL BACKGROUND DE LA APP ---
+dots_url = obtener_polka_dots_css()
 st.markdown(f"""
     <style>
+    /* Gradiente azul oscuro de fondo */
     .stApp {{
         background: linear-gradient(135deg, #050a18 0%, #0a1128 50%, #0d1b3e 100%) !important;
         background-attachment: fixed !important;
         color: #FFFFFF;
     }}
     
+    /* Capa de Polka Dots (Hero Pattern) */
     .stApp::before {{
         content: "";
         position: fixed;
         top: 0; left: 0; width: 100%; height: 100%;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M96 95h4v1h-4v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h-9V16h9v-1h-9V6h9V5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h-9V16h9v-1h-9V6h9V5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h-9V16h9v-1h-9V6h9V5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h4z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-        opacity: 0.05;
+        background-image: {dots_url};
+        background-size: 60px 60px;
+        background-repeat: repeat;
+        opacity: 0.04; /* Muy sutil */
         pointer-events: none;
         z-index: 0;
     }}
@@ -67,6 +71,7 @@ st.markdown(f"""
         z-index: 1;
     }}
 
+    /* Estilo de los Inputs */
     .stTextInput>div>div>input {{
         background-color: rgba(255, 255, 255, 0.07);
         color: white;
@@ -235,9 +240,9 @@ if img1 and img2 and img3:
             with cti: st.button("🗑️", key=f"clear_info_{r_i}", on_click=clear_field, args=(f"input_lugar_{r_i}",))
             cl, cr = st.columns(2)
             with cl: 
-                if v_i > 0: st.button("◀", key=f"ml_{r_i}", on_click=mover_izq, args=(v_i,), use_container_width=True)
+                if v_i > 0: st.button("◀ Mover", key=f"ml_{r_i}", on_click=mover_izq, args=(v_i,), use_container_width=True)
             with cr:
-                if v_i < 2: st.button("▶", key=f"mr_{r_i}", on_click=mover_der, args=(v_i,), use_container_width=True)
+                if v_i < 2: st.button("Mover ▶", key=f"mr_{r_i}", on_click=mover_der, args=(v_i,), use_container_width=True)
 
     st.divider()
     st.write("### 3. Ajustes de Composición")
