@@ -16,6 +16,8 @@ if 'img_bytes' not in st.session_state:
     st.session_state.img_bytes = None
 if 'orden' not in st.session_state:
     st.session_state.orden = [0, 1, 2]
+if 'nombres' not in st.session_state:
+    st.session_state.nombres = ["", "", ""]
 if 'lugares' not in st.session_state:
     st.session_state.lugares = ["", "", ""]
 if 'last_files_hash' not in st.session_state:
@@ -217,11 +219,12 @@ if img1_file and img2_file and img3_file:
     st.divider()
     st.write("### 2. Orden y Ubicaciones")
     archivos = [img1_file, img2_file, img3_file]
-    autores = [os.path.splitext(f.name)[0] for f in archivos]
     
+    # Lógica de detección de nuevos archivos para inicializar estados
     current_files_hash = "".join([f.name for f in archivos])
     if st.session_state.last_files_hash != current_files_hash:
-        st.session_state.lugares = [name for name in autores]
+        st.session_state.nombres = [os.path.splitext(f.name)[0] for f in archivos]
+        st.session_state.lugares = ["", "", ""]
         st.session_state.last_files_hash = current_files_hash
     
     miniaturas = []
@@ -235,23 +238,34 @@ if img1_file and img2_file and img3_file:
     for visual_idx, real_idx in enumerate(st.session_state.orden):
         with cols_preview[visual_idx]:
             st.image(miniaturas[real_idx], use_container_width=True)
-            st.caption(f"**Archivo:** {autores[real_idx]}")
             
-            # Ajuste de alineación vertical: usamos columnas con alineación al fondo
-            # para que el input y el botón queden nivelados.
+            # --- INPUT NOMBRE (ARCHIVO) ---
+            st.markdown("**Nombre / Archivo**")
+            c_name, c_trash_name = st.columns([0.78, 0.22], vertical_alignment="bottom")
+            with c_name:
+                st.session_state.nombres[real_idx] = st.text_input(
+                    "Nombre", 
+                    value=st.session_state.nombres[real_idx], 
+                    key=f"input_nombre_{real_idx}",
+                    label_visibility="collapsed"
+                ).strip()
+            with c_trash_name:
+                if st.button("🗑️", key=f"clear_name_{real_idx}", help="Borrar nombre"):
+                    st.session_state.nombres[real_idx] = ""
+                    st.rerun()
+
+            # --- INPUT INFO EXTRA ---
             st.markdown("**Info Extra**")
-            c_input, c_trash = st.columns([0.78, 0.22], vertical_alignment="bottom")
-            
-            with c_input:
+            c_info, c_trash_info = st.columns([0.78, 0.22], vertical_alignment="bottom")
+            with c_info:
                 st.session_state.lugares[real_idx] = st.text_input(
                     "Info Extra", 
                     value=st.session_state.lugares[real_idx], 
                     key=f"input_lugar_{real_idx}",
-                    label_visibility="collapsed" # Ocultamos el label para que no empuje el widget
+                    label_visibility="collapsed"
                 ).strip().upper()
-                
-            with c_trash:
-                if st.button("🗑️", key=f"clear_{real_idx}", help="Vaciar campo"):
+            with c_trash_info:
+                if st.button("🗑️", key=f"clear_info_{real_idx}", help="Vaciar campo"):
                     st.session_state.lugares[real_idx] = ""
                     st.rerun()
             
@@ -290,8 +304,10 @@ if img1_file and img2_file and img3_file:
                     img_full = ImageOps.exif_transpose(Image.open(archivos[r_idx]).convert("RGB"))
                     pos_visual = st.session_state.orden.index(r_idx)
                     datos_brutos.append({
-                        'img_obj': img_full, 'autor': autores[r_idx], 
-                        'lugar': st.session_state.lugares[r_idx], 'orden': pos_visual
+                        'img_obj': img_full, 
+                        'autor': st.session_state.nombres[r_idx], # Ahora usa el estado editable
+                        'lugar': st.session_state.lugares[r_idx], 
+                        'orden': pos_visual
                     })
                 
                 datos_imagenes = sorted(datos_brutos, key=lambda x: x['orden'])
