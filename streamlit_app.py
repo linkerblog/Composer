@@ -28,9 +28,6 @@ def mover_izq(v_idx):
 def mover_der(v_idx):
     st.session_state.orden[v_idx], st.session_state.orden[v_idx+1] = st.session_state.orden[v_idx+1], st.session_state.orden[v_idx]
 
-def vaciar_info(idx):
-    st.session_state.lugares[idx] = ""
-
 # --- FUNCIONES GRÁFICAS ---
 def generar_paleta_analoga():
     h_base = random.random()
@@ -237,31 +234,36 @@ if img1_file and img2_file and img3_file:
     
     for visual_idx, real_idx in enumerate(st.session_state.orden):
         with cols_preview[visual_idx]:
-            st.image(miniaturas[real_idx], width='stretch')
-            st.caption(f"**Autor:** {autores[real_idx]}")
+            st.image(miniaturas[real_idx], use_container_width=True)
+            st.caption(f"**Archivo:** {autores[real_idx]}")
             
-            # Layout para input de texto y botón de borrado
-            c_input, c_clear = st.columns([0.8, 0.2])
+            # Ajuste de alineación vertical: usamos columnas con alineación al fondo
+            # para que el input y el botón queden nivelados.
+            st.markdown("**Info Extra**")
+            c_input, c_trash = st.columns([0.78, 0.22], vertical_alignment="bottom")
+            
             with c_input:
                 st.session_state.lugares[real_idx] = st.text_input(
                     "Info Extra", 
                     value=st.session_state.lugares[real_idx], 
-                    key=f"loc_{real_idx}"
+                    key=f"input_lugar_{real_idx}",
+                    label_visibility="collapsed" # Ocultamos el label para que no empuje el widget
                 ).strip().upper()
-            with c_clear:
-                st.write("") # Espaciador para alinear con el label
-                st.write("")
-                if st.button("🗑️", key=f"btn_clr_{real_idx}", help="Vaciar este campo"):
+                
+            with c_trash:
+                if st.button("🗑️", key=f"clear_{real_idx}", help="Vaciar campo"):
                     st.session_state.lugares[real_idx] = ""
                     st.rerun()
             
+            # Controles de movimiento
+            st.write("")
             c_izq, c_der = st.columns(2)
             with c_izq:
                 if visual_idx > 0:
-                    st.button("◀ Mover", key=f"btn_izq_{real_idx}", on_click=mover_izq, args=(visual_idx,), width='stretch')
+                    st.button("◀ Mover", key=f"btn_izq_{real_idx}", on_click=mover_izq, args=(visual_idx,), use_container_width=True)
             with c_der:
                 if visual_idx < 2:
-                    st.button("Mover ▶", key=f"btn_der_{real_idx}", on_click=mover_der, args=(visual_idx,), width='stretch')
+                    st.button("Mover ▶", key=f"btn_der_{real_idx}", on_click=mover_der, args=(visual_idx,), use_container_width=True)
 
     st.divider()
     st.write("### 3. Opciones Adicionales")
@@ -279,7 +281,7 @@ if img1_file and img2_file and img3_file:
     with c_opc3:
         color_marco = st.color_picker("Color", "#FFFFFF", disabled=not aplicar_marco)
 
-    if st.button("Generar Composición", type="primary", width='stretch'):
+    if st.button("Generar Composición", type="primary", use_container_width=True):
         with st.spinner("Procesando matriz gráfica..."):
             try:
                 datos_brutos = []
@@ -316,7 +318,7 @@ if img1_file and img2_file and img3_file:
                 st.error(f"Error crítico en renderizado: {e}")
     
     if st.session_state.img_final:
-        st.image(st.session_state.img_final, width='stretch')
-        st.download_button("Descargar Composición", st.session_state.img_bytes, "composicion.jpeg", "image/jpeg", width='stretch')
+        st.image(st.session_state.img_final, use_container_width=True)
+        st.download_button("Descargar Composición", st.session_state.img_bytes, "composicion.jpeg", "image/jpeg", use_container_width=True)
 else:
     st.info("Esperando los tres archivos en la cabecera...")
