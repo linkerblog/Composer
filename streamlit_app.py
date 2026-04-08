@@ -32,75 +32,32 @@ def clear_field(key):
     if key in st.session_state:
         st.session_state[key] = ""
 
-# --- LÓGICA DE PATRÓN DE FONDO (SVG) ---
-def obtener_patron_css():
-    dir_vector = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vector")
-    
-    if not os.path.exists(dir_vector):
-        try:
-            os.makedirs(dir_vector)
-        except:
-            pass
-        return ""
-    
-    svg_files = [f for f in os.listdir(dir_vector) if f.lower().endswith('.svg')]
-    if not svg_files:
-        return ""
-    
-    svg_layers = []
-    positions = []
-    sizes = []
-    
-    # Usamos hasta 8 iconos para crear capas superpuestas con separación
-    for i, f in enumerate(svg_files[:8]): 
-        path = os.path.join(dir_vector, f)
-        try:
-            with open(path, "r", encoding="utf-8") as svg_file:
-                svg_data = svg_file.read()
-                svg_encoded = base64.b64encode(svg_data.encode('utf-8')).decode('utf-8')
-                svg_layers.append(f"url('data:image/svg+xml;base64,{svg_encoded}')")
-                
-                # Generamos "aleatoriedad" basada en el índice para que sea consistente entre reruns
-                offset_x = (i * 37) % 100
-                offset_y = (i * 23) % 100
-                scale = 250 + (i * 70) % 300
-                
-                positions.append(f"{offset_x}% {offset_y}%")
-                sizes.append(f"{scale}px {scale}px")
-        except:
-            continue
-    
-    if not svg_layers:
-        return ""
-
-    # Configuramos el fondo con múltiples capas, posiciones y tamaños
-    css_bg = f"""
-    background-image: {', '.join(svg_layers)};
-    background-position: {', '.join(positions)};
-    background-size: {', '.join(sizes)};
-    background-repeat: repeat;
-    opacity: 0.08;
-    filter: brightness(0) invert(1); /* Los hace blancos sutiles */
+# --- LÓGICA DE HERO PATTERN CSS ---
+def obtener_hero_pattern():
     """
-    return css_bg
+    Retorna el CSS para un Hero Pattern de 'Circuit Board'.
+    Es mucho más eficiente que procesar SVGs locales uno por uno para el fondo.
+    """
+    return """
+    background-color: #050a18;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='304' height='304' viewBox='0 0 304 304'%3E%3Cpath fill='%239C92AC' fill-opacity='0.05' d='M44.1 224a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm160 0a5 5 0 1 1 0 2 5 5 0 0 1 0-2zM16 160a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm32 32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm0-32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm128 0a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm32 32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm0-32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm-128 0a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm32 32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm0-32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm-128 0a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm32 32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm0-32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm-128 0a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm32 32a5 5 0 1 1 0 2 5 5 0 0 1 0-2zm0-32a5 5 0 1 1 0 2 5 5 0 0 1 0-2z'/%3E%3C/svg%3E");
+    """
 
 # --- INYECCIÓN DE CSS PARA EL BACKGROUND DE LA APP ---
-pattern_css = obtener_patron_css()
 st.markdown(f"""
     <style>
     .stApp {{
         background: linear-gradient(135deg, #050a18 0%, #0a1128 50%, #0d1b3e 100%) !important;
+        background-attachment: fixed !important;
         color: #FFFFFF;
     }}
     
     .stApp::before {{
         content: "";
         position: fixed;
-        top: 0; 
-        left: 0; 
-        width: 100%; 
-        height: 100%;
-        {pattern_css}
+        top: 0; left: 0; width: 100%; height: 100%;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M96 95h4v1h-4v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h-9V16h9v-1h-9V6h9V5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h-9V16h9v-1h-9V6h9V5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h-9V16h9v-1h-9V6h9V5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5h-9V0h-1v5H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9H0v1h15v9h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h9v84h1v-84h4z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        opacity: 0.05;
         pointer-events: none;
         z-index: 0;
     }}
