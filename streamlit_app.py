@@ -34,22 +34,28 @@ def clear_field(key):
 
 # --- LÓGICA DE PATRÓN DE FONDO (SVG) ---
 def obtener_patron_css():
+    # Usamos ruta absoluta para evitar problemas de contexto
     dir_vector = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vector")
+    
     if not os.path.exists(dir_vector):
-        os.makedirs(dir_vector)
+        try:
+            os.makedirs(dir_vector)
+        except:
+            pass
         return ""
     
     svg_files = [f for f in os.listdir(dir_vector) if f.lower().endswith('.svg')]
     if not svg_files:
         return ""
     
-    # Leemos los SVGs y los preparamos para CSS
     svg_patterns = []
-    for i, f in enumerate(svg_files[:5]): # Limitamos a 5 iconos para no saturar
+    # Tomamos los primeros iconos para crear la capa del patrón
+    for i, f in enumerate(svg_files[:10]): 
         path = os.path.join(dir_vector, f)
         try:
             with open(path, "r", encoding="utf-8") as svg_file:
                 svg_data = svg_file.read()
+                # Codificamos a base64 para inyectar en CSS sin problemas de caracteres
                 svg_encoded = base64.b64encode(svg_data.encode('utf-8')).decode('utf-8')
                 svg_patterns.append(f"url('data:image/svg+xml;base64,{svg_encoded}')")
         except:
@@ -58,37 +64,56 @@ def obtener_patron_css():
     if not svg_patterns:
         return ""
 
-    # Creamos un patrón repetitivo sutil
+    # Configuramos el fondo repetitivo
+    # background-size controla qué tan grandes se ven los iconos en el fondo
     css_bg = f"""
     background-image: {', '.join(svg_patterns)};
-    background-size: 180px 180px;
+    background-size: 200px 200px;
     background-repeat: repeat;
-    background-blend-mode: soft-light;
-    opacity: 0.12;
+    opacity: 0.18;
+    filter: brightness(0) invert(1); /* Forzamos a que sean blancos para que se vean en el azul oscuro */
     """
     return css_bg
 
-# --- INYECCIÓN DE CSS PARA EL BACKGROUND DE LA APP (GRADIENTE AZUL OSCURO) ---
+# --- INYECCIÓN DE CSS PARA EL BACKGROUND DE LA APP ---
 pattern_css = obtener_patron_css()
 st.markdown(f"""
     <style>
+    /* El gradiente azul oscuro principal */
     .stApp {{
-        background: linear-gradient(135deg, #0a0b1e 0%, #16213e 50%, #1a1a2e 100%);
+        background: linear-gradient(135deg, #050a18 0%, #0a1128 50%, #0d1b3e 100%) !important;
         color: #FFFFFF;
     }}
+    
+    /* Capa del Hero Pattern */
     .stApp::before {{
         content: "";
         position: fixed;
-        top: 0; left: 0; width: 100%; height: 100%;
+        top: 0; 
+        left: 0; 
+        width: 100%; 
+        height: 100%;
         {pattern_css}
         pointer-events: none;
-        z-index: -1;
+        z-index: 0;
     }}
-    /* Aseguramos visibilidad de inputs en fondo oscuro */
+
+    /* Ajuste para que el contenido esté sobre el patrón */
+    .stApp > header, .stApp > .main {{
+        position: relative;
+        z-index: 1;
+    }}
+
+    /* Estilo para los inputs */
     .stTextInput>div>div>input {{
-        background-color: rgba(255,255,255,0.05);
+        background-color: rgba(255, 255, 255, 0.07);
         color: white;
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+    }}
+    
+    .stButton>button {{
+        border-radius: 8px;
     }}
     </style>
     """, unsafe_allow_html=True)
