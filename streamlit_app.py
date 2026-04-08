@@ -29,31 +29,31 @@ def mover_der(v_idx):
 
 def clear_field(key):
     """Limpia el campo de texto y fuerza la actualización del estado"""
-    st.session_state[key] = ""
+    if key in st.session_state:
+        st.session_state[key] = ""
 
 # --- LÓGICA DE HERO PATTERN (POLKA DOTS SVG) ---
 def obtener_polka_dots_css():
-    """Lee el archivo polka-dots.svg y lo convierte en un patrón CSS sutil"""
+    """Lee el archivo polka-dots.svg y lo convierte en un patrón CSS sutil pero visible"""
     path_svg = "polka-dots.svg"
     if os.path.exists(path_svg):
         with open(path_svg, "rb") as f:
             svg_encoded = base64.b64encode(f.read()).decode('utf-8')
             return f"url('data:image/svg+xml;base64,{svg_encoded}')"
-    # Fallback si el archivo no está
     return ""
 
 # --- INYECCIÓN DE CSS PARA EL BACKGROUND DE LA APP ---
 dots_url = obtener_polka_dots_css()
 st.markdown(f"""
     <style>
-    /* Gradiente azul oscuro de fondo */
+    /* Gradiente azul oscuro de fondo - Un grado más vibrante */
     .stApp {{
-        background: linear-gradient(135deg, #050a18 0%, #0a1128 50%, #0d1b3e 100%) !important;
+        background: linear-gradient(135deg, #0a0b1e 0%, #16213e 50%, #1e2a4a 100%) !important;
         background-attachment: fixed !important;
         color: #FFFFFF;
     }}
     
-    /* Capa de Polka Dots (Hero Pattern) */
+    /* Capa de Polka Dots (Hero Pattern) - Opacidad aumentada para visibilidad */
     .stApp::before {{
         content: "";
         position: fixed;
@@ -61,7 +61,7 @@ st.markdown(f"""
         background-image: {dots_url};
         background-size: 60px 60px;
         background-repeat: repeat;
-        opacity: 0.04; /* Muy sutil */
+        opacity: 0.12; /* Aumentado de 0.04 para ser visible */
         pointer-events: none;
         z-index: 0;
     }}
@@ -73,9 +73,9 @@ st.markdown(f"""
 
     /* Estilo de los Inputs */
     .stTextInput>div>div>input {{
-        background-color: rgba(255, 255, 255, 0.07);
+        background-color: rgba(255, 255, 255, 0.09);
         color: white;
-        border: 1px solid rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.2);
         border-radius: 8px;
     }}
     
