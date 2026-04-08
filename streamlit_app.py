@@ -5,6 +5,7 @@ import os
 import io
 import math
 import colorsys
+import base64
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Generador de Composiciones", layout="centered")
@@ -18,8 +19,6 @@ if 'orden' not in st.session_state:
     st.session_state.orden = [0, 1, 2]
 if 'last_files_hash' not in st.session_state:
     st.session_state.last_files_hash = None
-if 'bg_app_color' not in st.session_state:
-    st.session_state.bg_app_color = "#0e1117" # Color oscuro por defecto de Streamlit
 
 # --- FUNCIONES DE NAVEGACIÓN Y ESTADO (CALLBACKS) ---
 def mover_izq(v_idx):
@@ -29,17 +28,67 @@ def mover_der(v_idx):
     st.session_state.orden[v_idx], st.session_state.orden[v_idx+1] = st.session_state.orden[v_idx+1], st.session_state.orden[v_idx]
 
 def clear_field(key):
-    st.session_state[key] = ""
+    """Limpia el campo de texto y asegura el borrado en el session_state"""
+    if key in st.session_state:
+        st.session_state[key] = ""
 
-# --- INYECCIÓN DE CSS PARA EL BACKGROUND DE LA APP ---
+# --- LÓGICA DE PATRÓN DE FONDO (SVG) ---
+def obtener_patron_css():
+    dir_vector = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vector")
+    if not os.path.exists(dir_vector):
+        os.makedirs(dir_vector)
+        return ""
+    
+    svg_files = [f for f in os.listdir(dir_vector) if f.lower().endswith('.svg')]
+    if not svg_files:
+        return ""
+    
+    # Leemos los SVGs y los preparamos para CSS
+    svg_patterns = []
+    for i, f in enumerate(svg_files[:5]): # Limitamos a 5 iconos para no saturar
+        path = os.path.join(dir_vector, f)
+        try:
+            with open(path, "r", encoding="utf-8") as svg_file:
+                svg_data = svg_file.read()
+                svg_encoded = base64.b64encode(svg_data.encode('utf-8')).decode('utf-8')
+                svg_patterns.append(f"url('data:image/svg+xml;base64,{svg_encoded}')")
+        except:
+            continue
+    
+    if not svg_patterns:
+        return ""
+
+    # Creamos un patrón repetitivo sutil
+    css_bg = f"""
+    background-image: {', '.join(svg_patterns)};
+    background-size: 180px 180px;
+    background-repeat: repeat;
+    background-blend-mode: soft-light;
+    opacity: 0.12;
+    """
+    return css_bg
+
+# --- INYECCIÓN DE CSS PARA EL BACKGROUND DE LA APP (GRADIENTE AZUL OSCURO) ---
+pattern_css = obtener_patron_css()
 st.markdown(f"""
     <style>
     .stApp {{
-        background-color: {st.session_state.bg_app_color};
+        background: linear-gradient(135deg, #0a0b1e 0%, #16213e 50%, #1a1a2e 100%);
+        color: #FFFFFF;
     }}
-    /* Ajuste para que los textos sean legibles si el fondo es claro */
-    .stApp {{
-        color: {"#31333F" if int(st.session_state.bg_app_color.lstrip('#'), 16) > 0x888888 else "#FFFFFF"};
+    .stApp::before {{
+        content: "";
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        {pattern_css}
+        pointer-events: none;
+        z-index: -1;
+    }}
+    /* Aseguramos visibilidad de inputs en fondo oscuro */
+    .stTextInput>div>div>input {{
+        background-color: rgba(255,255,255,0.05);
+        color: white;
+        border: 1px solid rgba(255,255,255,0.1);
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -47,8 +96,7 @@ st.markdown(f"""
 # --- FUNCIONES GRÁFICAS ---
 def generar_paleta_analoga():
     h_base = random.random()
-    s = random.uniform(0.65, 0.85)
-    v = random.uniform(0.75, 0.95)
+    s, v = random.uniform(0.65, 0.85), random.uniform(0.75, 0.95)
     colores = []
     for offset in [0, 0.12, -0.08]: 
         h = (h_base + offset) % 1.0
@@ -61,287 +109,197 @@ def extraer_colores_vibrantes(datos_imagenes):
     for d in datos_imagenes:
         img_peq = d['img_obj'].resize((4, 4), Image.Resampling.LANCZOS)
         pixeles = [img_peq.getpixel((x, y)) for x in range(4) for y in range(4)]
-        
-        mejor_color = (0, 0, 0)
-        max_score = -1
+        mejor_color, max_score = (0, 0, 0), -1
         for r, g, b in pixeles:
             h, s, v = colorsys.rgb_to_hsv(r/255.0, g/255.0, b/255.0)
-            score = s + v 
-            if score > max_score:
-                max_score = score
-                mejor_color = (r, g, b)
-                
+            if (s + v) > max_score: max_score, mejor_color = (s + v), (r, g, b)
         r, g, b = mejor_color
         h, s, v = colorsys.rgb_to_hsv(r/255.0, g/255.0, b/255.0)
-        s = min(1.0, s * 1.3 + 0.2) 
-        v = min(1.0, v * 1.1 + 0.1) 
-        r_v, g_v, b_v = colorsys.hsv_to_rgb(h, s, v)
+        r_v, g_v, b_v = colorsys.hsv_to_rgb(h, min(1.0, s * 1.3 + 0.2), min(1.0, v * 1.1 + 0.1))
         colores.append((int(r_v*255), int(g_v*255), int(b_v*255)))
-        
     return colores
 
 def dibujar_degradado_avanzado(lienzo, colores):
     ancho, alto = lienzo.size
     color1, color2, color3 = colores
-    
     escala = 10
-    w_peq, h_peq = ancho // escala, alto // escala
-    img_base = Image.new('RGB', (w_peq, h_peq))
-    
-    for y in range(h_peq):
-        for x in range(w_peq):
-            nx = x / w_peq
-            ny = y / h_peq
-            
-            inf1 = max(0, 1 - math.sqrt(nx**2 + ny**2))**1.6
-            inf2 = max(0, 1 - math.sqrt((1-nx)**2 + (1-ny)**2))**1.4
-            inf3 = max(0, 1 - math.sqrt((0.4-nx)**2 + (0.8-ny)**2))**1.8 
-            inf4 = max(0, 1 - math.sqrt((1-nx)**2 + ny**2))**1.5 
-            
+    w_p, h_p = ancho // escala, alto // escala
+    img_b = Image.new('RGB', (w_p, h_p))
+    for y in range(h_p):
+        for x in range(w_p):
+            nx, ny = x / w_p, y / h_p
+            inf1, inf2 = max(0, 1 - math.sqrt(nx**2 + ny**2))**1.6, max(0, 1 - math.sqrt((1-nx)**2 + (1-ny)**2))**1.4
+            inf3, inf4 = max(0, 1 - math.sqrt((0.4-nx)**2 + (0.8-ny)**2))**1.8, max(0, 1 - math.sqrt((1-nx)**2 + ny**2))**1.5
             total = inf1 + inf2 + inf3 + inf4 + 0.001
             r = int((color1[0]*(inf1+inf4) + color2[0]*inf2 + color3[0]*inf3) / total)
             g = int((color1[1]*(inf1+inf4) + color2[1]*inf2 + color3[1]*inf3) / total)
             b = int((color1[2]*(inf1+inf4) + color2[2]*inf2 + color3[2]*inf3) / total)
-            img_base.putpixel((x, y), (r, g, b))
-            
-    degradado_suave = img_base.resize((ancho, alto), Image.Resampling.LANCZOS)
-    lienzo.paste(degradado_suave)
+            img_b.putpixel((x, y), (r, g, b))
+    lienzo.paste(img_b.resize((ancho, alto), Image.Resampling.LANCZOS))
 
 def calcular_fuente_uniforme_global(textos, anchos_maximos, ruta_fuente, tamano_inicial, draw):
-    tamano_actual = tamano_inicial
-    fuente = ImageFont.truetype(ruta_fuente, tamano_actual)
-    while tamano_actual > 12:
-        todos_caben = True
-        for texto, max_ancho in zip(textos, anchos_maximos):
-            if not texto: continue 
-            bbox = draw.textbbox((0, 0), texto, font=fuente)
-            if (bbox[2] - bbox[0]) > (max_ancho - 10):
-                todos_caben = False
-                break
-        if todos_caben: break
-        tamano_actual -= 2
-        fuente = ImageFont.truetype(ruta_fuente, tamano_actual)
+    tam_a = tamano_inicial
+    fuente = ImageFont.truetype(ruta_fuente, tam_a)
+    while tam_a > 12:
+        caben = True
+        for t, m_w in zip(textos, anchos_maximos):
+            if not t: continue
+            bbox = draw.textbbox((0, 0), t, font=fuente)
+            if (bbox[2] - bbox[0]) > (m_w - 10): caben = False; break
+        if caben: break
+        tam_a -= 2
+        fuente = ImageFont.truetype(ruta_fuente, tam_a)
     return fuente
 
-def hex_a_rgb(hex_color):
-    hex_color = hex_color.lstrip('#')
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+def hex_a_rgb(c):
+    c = c.lstrip('#')
+    return tuple(int(c[i:i+2], 16) for i in (0, 2, 4))
 
-def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, offset_y_fotos, extra_tamano_texto, tamano_logo, aplicar_marco, estilo_marco, color_marco_hex, grosor_marco, colores):
-    CONFIG = {
-        'ANCHO_LIENZO': 1600, 'ALTO_LIENZO': 1147, 'MARGEN_SUPERIOR': 90,  
-        'ESPACIADO_X': 24, 'MAX_ALTO_IMG': 580, 'MAX_ANCHO_TOTAL': 1500,
-        'TAMANO_BASE_NOMBRE': 48, 'TAMANO_BASE_LUGAR': 72
-    }
-
-    lienzo = Image.new('RGB', (CONFIG['ANCHO_LIENZO'], CONFIG['ALTO_LIENZO']))
+def generar_collage(datos_imagenes, logo_img, ruta_fuente, off_y_t, off_y_f, ex_t, tam_l, marco, estilo, c_marco_hex, g_marco, colores):
+    cfg = {'W': 1600, 'H': 1147, 'TOP': 90, 'GAP': 24, 'M_H': 580, 'M_W': 1500}
+    lienzo = Image.new('RGB', (cfg['W'], cfg['H']))
     dibujar_degradado_avanzado(lienzo, colores)
     draw = ImageDraw.Draw(lienzo)
-
-    suma_ratios = sum(d['ratio'] for d in datos_imagenes)
-    espacio_disponible_w = CONFIG['MAX_ANCHO_TOTAL'] - (CONFIG['ESPACIADO_X'] * 2)
-    alto_final_img = int(min(CONFIG['MAX_ALTO_IMG'], espacio_disponible_w / suma_ratios))
-
-    ancho_total_real = 0
-    anchos_permitidos_por_columna = []
+    suma_r = sum(d['ratio'] for d in datos_imagenes)
+    h_f = int(min(cfg['M_H'], (cfg['M_W'] - (cfg['GAP']*2)) / suma_r))
+    anchos_c = []
     for d in datos_imagenes:
-        d['nuevo_ancho'] = int(alto_final_img * d['ratio'])
-        d['img_redimensionada'] = d['img_obj'].resize((d['nuevo_ancho'], alto_final_img), Image.Resampling.LANCZOS)
-        ancho_total_real += d['nuevo_ancho']
-        anchos_permitidos_por_columna.append(d['nuevo_ancho'] + CONFIG['ESPACIADO_X'])
-    
-    ancho_total_real += (CONFIG['ESPACIADO_X'] * 2)
-    pos_x_actual = (CONFIG['ANCHO_LIENZO'] - ancho_total_real) // 2
-
-    autores = [d['autor'] for d in datos_imagenes]
-    lugares = [d['lugar'] for d in datos_imagenes]
-
-    fuente_n = calcular_fuente_uniforme_global(autores, anchos_permitidos_por_columna, ruta_fuente, CONFIG['TAMANO_BASE_NOMBRE'] + extra_tamano_texto, draw)
-    fuente_l = calcular_fuente_uniforme_global(lugares, anchos_permitidos_por_columna, ruta_fuente, CONFIG['TAMANO_BASE_LUGAR'] + extra_tamano_texto, draw)
-
-    max_y_texto_detectado = 0
-    color_marco_rgb = hex_a_rgb(color_marco_hex)
-
-    pos_y_fotos = CONFIG['MARGEN_SUPERIOR'] + offset_y_fotos
-
+        d['w_r'] = int(h_f * d['ratio'])
+        d['i_r'] = d['img_obj'].resize((d['w_r'], h_f), Image.Resampling.LANCZOS)
+        anchos_c.append(d['w_r'] + cfg['GAP'])
+    pos_x = (cfg['W'] - (sum(d['w_r'] for d in datos_imagenes) + cfg['GAP']*2)) // 2
+    f_n = calcular_fuente_uniforme_global([d['autor'] for d in datos_imagenes], anchos_c, ruta_fuente, 48 + ex_t, draw)
+    f_l = calcular_fuente_uniforme_global([d['lugar'] for d in datos_imagenes], anchos_c, ruta_fuente, 72 + ex_t, draw)
+    max_y, c_m_rgb = 0, hex_a_rgb(c_marco_hex)
+    pos_y = cfg['TOP'] + off_y_f
     for d in datos_imagenes:
-        lienzo.paste(d['img_redimensionada'], (pos_x_actual, pos_y_fotos))
-        
-        if aplicar_marco:
-            x0, y0 = pos_x_actual, pos_y_fotos
-            x1, y1 = pos_x_actual + d['nuevo_ancho'] - 1, pos_y_fotos + alto_final_img - 1
-            if estilo_marco == "Sólido":
-                draw.rectangle([x0, y0, x1, y1], outline=color_marco_rgb, width=grosor_marco)
+        lienzo.paste(d['i_r'], (pos_x, pos_y))
+        if marco:
+            x0, y0, x1, y1 = pos_x, pos_y, pos_x + d['w_r'] - 1, pos_y + h_f - 1
+            if estilo == "Sólido": draw.rectangle([x0, y0, x1, y1], outline=c_m_rgb, width=g_marco)
             else:
-                paso, largo_linea = (4, 2) if estilo_marco == "Punteado" else (12, 6)
-                for x in range(x0, x1 + 1, paso):
-                    draw.line([(x, y0), (min(x + largo_linea - 1, x1), y0)], fill=color_marco_rgb, width=grosor_marco)
-                    draw.line([(x, y1), (min(x + largo_linea - 1, x1), y1)], fill=color_marco_rgb, width=grosor_marco)
-                for y in range(y0, y1 + 1, paso):
-                    draw.line([(x0, y), (x0, min(y + largo_linea - 1, y1))], fill=color_marco_rgb, width=grosor_marco)
-                    draw.line([(x1, y), (x1, min(y + largo_linea - 1, y1))], fill=color_marco_rgb, width=grosor_marco)
-
-        centro_img_x = pos_x_actual + (d['nuevo_ancho'] // 2)
-
-        y_texto_nombre = pos_y_fotos + alto_final_img + 25 + offset_y_texto
-        bbox_nombre = draw.textbbox((0, 0), d['autor'], font=fuente_n)
-        draw.text((centro_img_x - ((bbox_nombre[2]-bbox_nombre[0]) / 2), y_texto_nombre), d['autor'], font=fuente_n, fill="white")
-        alto_nombre = bbox_nombre[3] - bbox_nombre[1]
-        
-        y_texto_lugar = y_texto_nombre + alto_nombre + 5 
+                p, l = (4, 2) if estilo == "Punteado" else (12, 6)
+                for x in range(x0, x1 + 1, p):
+                    draw.line([(x, y0), (min(x+l-1, x1), y0)], fill=c_m_rgb, width=g_marco)
+                    draw.line([(x, y1), (min(x+l-1, x1), y1)], fill=c_m_rgb, width=g_marco)
+                for y in range(y0, y1 + 1, p):
+                    draw.line([(x0, y), (x0, min(y+l-1, y1))], fill=c_m_rgb, width=g_marco)
+                    draw.line([(x1, y), (x1, min(y+l-1, y1))], fill=c_m_rgb, width=g_marco)
+        c_x = pos_x + (d['w_r'] // 2)
+        y_n = pos_y + h_f + 25 + off_y_t
+        bb_n = draw.textbbox((0, 0), d['autor'], font=f_n)
+        draw.text((c_x - ((bb_n[2]-bb_n[0])/2), y_n), d['autor'], font=f_n, fill="white")
+        y_l = y_n + (bb_n[3]-bb_n[1]) + 5
         if d['lugar']:
-            bbox_lugar = draw.textbbox((0, 0), d['lugar'], font=fuente_l)
-            draw.text((centro_img_x - ((bbox_lugar[2]-bbox_lugar[0]) / 2), y_texto_lugar), d['lugar'], font=fuente_l, fill="white")
-            max_y_texto_detectado = max(max_y_texto_detectado, y_texto_lugar + (bbox_lugar[3]-bbox_lugar[1]))
-        else:
-            max_y_texto_detectado = max(max_y_texto_detectado, y_texto_nombre + alto_nombre)
-
-        pos_x_actual += d['nuevo_ancho'] + CONFIG['ESPACIADO_X']
-
-    if logo_img is not None:
-        ancho_logo = tamano_logo 
-        alto_logo = int(float(logo_img.size[1]) * (ancho_logo / float(logo_img.size[0])))
-        logo_procesado = logo_img.resize((ancho_logo, alto_logo), Image.Resampling.LANCZOS)
-        pos_x_logo = (CONFIG['ANCHO_LIENZO'] - ancho_logo) // 2
-        pos_y_logo = max(max_y_texto_detectado + 40, CONFIG['ALTO_LIENZO'] - alto_logo - 30)
-        
-        if logo_procesado.mode == 'RGBA':
-            lienzo.paste(logo_procesado, (pos_x_logo, pos_y_logo), logo_procesado)
-        else:
-            lienzo.paste(logo_procesado, (pos_x_logo, pos_y_logo))
-
+            bb_l = draw.textbbox((0, 0), d['lugar'], font=f_l)
+            draw.text((c_x - ((bb_l[2]-bb_l[0])/2), y_l), d['lugar'], font=f_l, fill="white")
+            max_y = max(max_y, y_l + (bb_l[3]-bb_l[1]))
+        else: max_y = max(max_y, y_n + (bb_n[3]-bb_n[1]))
+        pos_x += d['w_r'] + cfg['GAP']
+    if logo_img:
+        l_h = int(float(logo_img.size[1]) * (tam_l / float(logo_img.size[0])))
+        l_p = logo_img.resize((tam_l, l_h), Image.Resampling.LANCZOS)
+        p_x_l, p_y_l = (cfg['W'] - tam_l) // 2, max(max_y + 40, cfg['H'] - l_h - 30)
+        if l_p.mode == 'RGBA': lienzo.paste(l_p, (p_x_l, p_y_l), l_p)
+        else: lienzo.paste(l_p, (p_x_l, p_y_l))
     return lienzo
 
-# --- INTERFAZ DE USUARIO ---
+# --- INTERFAZ ---
 st.title("Generador de Composiciones")
 
-dir_fuentes = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fuentes")
-if not os.path.exists(dir_fuentes): os.makedirs(dir_fuentes)
-fuentes_disp = [f for f in os.listdir(dir_fuentes) if f.lower().endswith(('.ttf', '.otf'))]
-ruta_fuente = None
-
-if not fuentes_disp:
-    st.warning("Inserta archivos tipográficos (.ttf o .otf) en la carpeta 'fuentes'.")
-else:
-    ruta_fuente = os.path.join(dir_fuentes, st.selectbox("Selección de Tipografía", fuentes_disp))
+dir_f = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fuentes")
+if not os.path.exists(dir_f): os.makedirs(dir_f)
+fs = [f for f in os.listdir(dir_f) if f.lower().endswith(('.ttf', '.otf'))]
+r_f = os.path.join(dir_f, st.selectbox("Tipografía Principal", fs)) if fs else None
 
 st.write("### 1. Carga de Fotografías")
-col_up1, col_up2, col_up3 = st.columns(3)
-with col_up1: img1_file = st.file_uploader("Archivo 1", type=['jpg', 'jpeg', 'png'])
-with col_up2: img2_file = st.file_uploader("Archivo 2", type=['jpg', 'jpeg', 'png'])
-with col_up3: img3_file = st.file_uploader("Archivo 3", type=['jpg', 'jpeg', 'png'])
+c_up1, c_up2, c_up3 = st.columns(3)
+with c_up1: img1 = st.file_uploader("Archivo 1", type=['jpg', 'jpeg', 'png'])
+with c_up2: img2 = st.file_uploader("Archivo 2", type=['jpg', 'jpeg', 'png'])
+with c_up3: img3 = st.file_uploader("Archivo 3", type=['jpg', 'jpeg', 'png'])
 
-if img1_file and img2_file and img3_file:
+if img1 and img2 and img3:
     st.divider()
     st.write("### 2. Edición de Datos y Orden")
-    archivos = [img1_file, img2_file, img3_file]
-    
-    current_files_hash = "".join([f.name for f in archivos])
-    if st.session_state.last_files_hash != current_files_hash:
-        for i, f in enumerate(archivos):
+    as_ = [img1, img2, img3]
+    h_c = "".join([f.name for f in as_])
+    if st.session_state.last_files_hash != h_c:
+        for i, f in enumerate(as_):
             st.session_state[f"input_nombre_{i}"] = os.path.splitext(f.name)[0]
             st.session_state[f"input_lugar_{i}"] = ""
-        st.session_state.last_files_hash = current_files_hash
+        st.session_state.last_files_hash = h_c
     
-    miniaturas = []
-    for f in archivos:
+    ms = []
+    for f in as_:
         f.seek(0)
-        img_raw = ImageOps.exif_transpose(Image.open(f).convert("RGB"))
-        miniaturas.append(ImageOps.fit(img_raw, (300, 300), Image.Resampling.LANCZOS))
+        ms.append(ImageOps.fit(ImageOps.exif_transpose(Image.open(f).convert("RGB")), (300, 300), Image.Resampling.LANCZOS))
     
-    cols_preview = st.columns(3)
-    
-    for visual_idx, real_idx in enumerate(st.session_state.orden):
-        with cols_preview[visual_idx]:
-            st.image(miniaturas[real_idx], use_container_width=True)
-            
-            # --- INPUT NOMBRE (EDITABLE) ---
+    cps = st.columns(3)
+    for v_i, r_i in enumerate(st.session_state.orden):
+        with cps[v_i]:
+            st.image(ms[r_i], use_container_width=True)
             st.markdown("**Nombre / Archivo**")
-            c_name, c_trash_name = st.columns([0.78, 0.22], vertical_alignment="bottom")
-            with c_name:
-                st.text_input("Nombre", key=f"input_nombre_{real_idx}", label_visibility="collapsed").strip()
-            with c_trash_name:
-                # Usamos on_click para asegurar el borrado del estado
-                st.button("🗑️", key=f"clear_name_{real_idx}", on_click=clear_field, args=(f"input_nombre_{real_idx}",))
-
-            # --- INPUT INFO EXTRA ---
+            cn, ct = st.columns([0.78, 0.22], vertical_alignment="bottom")
+            with cn: st.text_input("N", key=f"input_nombre_{r_i}", label_visibility="collapsed")
+            with ct: st.button("🗑️", key=f"cn_{r_i}", on_click=clear_field, args=(f"input_nombre_{r_i}",))
             st.markdown("**Info Extra**")
-            c_info, c_trash_info = st.columns([0.78, 0.22], vertical_alignment="bottom")
-            with c_info:
-                st.text_input("Info Extra", key=f"input_lugar_{real_idx}", label_visibility="collapsed").strip().upper()
-            with c_trash_info:
-                st.button("🗑️", key=f"clear_info_{real_idx}", on_click=clear_field, args=(f"input_lugar_{real_idx}",))
-            
-            # Controles de movimiento
-            st.write("")
-            c_izq, c_der = st.columns(2)
-            with c_izq:
-                if visual_idx > 0:
-                    st.button("◀ Mover", key=f"btn_izq_{real_idx}", on_click=mover_izq, args=(visual_idx,), use_container_width=True)
-            with c_der:
-                if visual_idx < 2:
-                    st.button("Mover ▶", key=f"btn_der_{real_idx}", on_click=mover_der, args=(visual_idx,), use_container_width=True)
+            ci, cti = st.columns([0.78, 0.22], vertical_alignment="bottom")
+            with ci: st.text_input("I", key=f"input_lugar_{r_i}", label_visibility="collapsed")
+            with cti: st.button("🗑️", key=f"ci_{r_i}", on_click=clear_field, args=(f"input_lugar_{r_i}",))
+            cl, cr = st.columns(2)
+            with cl: 
+                if v_i > 0: st.button("◀", key=f"ml_{r_i}", on_click=mover_izq, args=(v_i,), use_container_width=True)
+            with cr:
+                if v_i < 2: st.button("▶", key=f"mr_{r_i}", on_click=mover_der, args=(v_i,), use_container_width=True)
 
     st.divider()
-    st.write("### 3. Ajustes Visuales de la Composición")
-    logo_upload = st.file_uploader("Logotipo (Opcional)", type=['jpg', 'jpeg', 'png'])
-    
-    c_opc1, c_opc2, c_opc3 = st.columns(3)
-    with c_opc1:
-        offset_texto = st.slider("Posición Y textos (px)", -100, 100, 0, step=5)
-        offset_fotos = st.slider("Posición Y fotos (px)", -200, 200, 0, step=2)
-        extra_tamano_texto = st.slider("Aumento fuente (px)", 0, 40, 0, step=2) 
-    with c_opc2:
-        tamano_logo = st.slider("Tamaño Logo (px)", 50, 800, 260, step=10)
-        st.session_state.bg_app_color = st.color_picker("Color de fondo de la APP", st.session_state.bg_app_color)
-        usar_aleatorio = st.checkbox("Paleta de fondo aleatoria")
-    with c_opc3:
-        aplicar_marco = st.checkbox("Aplicar marco a fotos")
-        estilo_marco = st.selectbox("Patrón", ["Sólido", "Punteado", "Discontinuo"], disabled=not aplicar_marco)
-        grosor_marco = st.slider("Grosor (px)", 1, 15, 1, disabled=not aplicar_marco)
-        color_marco = st.color_picker("Color del marco", "#FFFFFF", disabled=not aplicar_marco)
+    st.write("### 3. Ajustes de Composición")
+    l_up = st.file_uploader("Logotipo (Opcional)", type=['jpg', 'jpeg', 'png'])
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        o_t = st.slider("Posición Y textos (px)", -100, 100, 0, 5)
+        o_f = st.slider("Posición Y fotos (px)", -200, 200, 0, 2)
+        e_t = st.slider("Aumento fuente (px)", 0, 40, 0, 2)
+    with c2:
+        t_l = st.slider("Tamaño Logo (px)", 50, 800, 260, 10)
+        u_a = st.checkbox("Fondo de composición aleatorio")
+        a_m = st.checkbox("Aplicar marco a fotos")
+    with c3:
+        e_m = st.selectbox("Patrón marco", ["Sólido", "Punteado", "Discontinuo"], disabled=not a_m)
+        g_m = st.slider("Grosor marco (px)", 1, 15, 1, disabled=not a_m)
+        c_m = st.color_picker("Color marco", "#FFFFFF", disabled=not a_m)
 
     if st.button("Generar Composición", type="primary", use_container_width=True):
-        with st.spinner("Pintando tu obra maestra..."):
+        with st.spinner("Procesando matriz gráfica..."):
             try:
-                datos_brutos = []
-                for r_idx in range(3):
-                    archivos[r_idx].seek(0)
-                    img_full = ImageOps.exif_transpose(Image.open(archivos[r_idx]).convert("RGB"))
-                    pos_visual = st.session_state.orden.index(r_idx)
-                    datos_brutos.append({
-                        'img_obj': img_full, 
-                        'autor': st.session_state[f"input_nombre_{r_idx}"],
-                        'lugar': st.session_state[f"input_lugar_{r_idx}"], 
-                        'orden': pos_visual
+                db = []
+                for r_i in range(3):
+                    as_[r_i].seek(0)
+                    db.append({
+                        'img_obj': ImageOps.exif_transpose(Image.open(as_[r_i]).convert("RGB")), 
+                        'autor': st.session_state[f"input_nombre_{r_i}"], 
+                        'lugar': st.session_state[f"input_lugar_{r_i}"], 
+                        'orden': st.session_state.orden.index(r_i)
                     })
+                dis = sorted(db, key=lambda x: x['orden'])
+                for d in dis: d['ratio'] = d['img_obj'].width / d['img_obj'].height
                 
-                datos_imagenes = sorted(datos_brutos, key=lambda x: x['orden'])
-                for d in datos_imagenes: d['ratio'] = d['img_obj'].width / d['img_obj'].height
-
-                paleta = generar_paleta_analoga() if usar_aleatorio else extraer_colores_vibrantes(datos_imagenes)
-                
-                logo_img = None
-                if logo_upload:
-                    logo_upload.seek(0)
-                    logo_img = Image.open(logo_upload).convert("RGBA")
-
                 final = generar_collage(
-                    datos_imagenes, logo_img, ruta_fuente, offset_texto, offset_fotos, 
-                    extra_tamano_texto, tamano_logo, aplicar_marco, estilo_marco, 
-                    color_marco, grosor_marco, paleta
+                    dis, 
+                    Image.open(l_up).convert("RGBA") if l_up else None, 
+                    r_f, o_t, o_f, e_t, t_l, a_m, e_m, c_m, g_m, 
+                    generar_paleta_analoga() if u_a else extraer_colores_vibrantes(dis)
                 )
-
+                
                 st.session_state.img_final = final
                 buf = io.BytesIO()
                 final.save(buf, format="JPEG", quality=95)
                 st.session_state.img_bytes = buf.getvalue()
-
             except Exception as e:
-                st.error(f"Error crítico en renderizado: {e}")
-    
+                st.error(f"Error: {e}")
+                
     if st.session_state.img_final:
         st.image(st.session_state.img_final, use_container_width=True)
         st.download_button("Descargar Composición", st.session_state.img_bytes, "composicion.jpeg", "image/jpeg", use_container_width=True)
 else:
-    st.info("Sube las tres fotos en la sección superior para habilitar el generador.")
+    st.info("Sube las tres fotos en la cabecera para comenzar a diseñar.")
