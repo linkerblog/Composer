@@ -18,8 +18,10 @@ if 'orden' not in st.session_state:
     st.session_state.orden = [0, 1, 2]
 if 'last_files_hash' not in st.session_state:
     st.session_state.last_files_hash = None
+if 'bg_app_color' not in st.session_state:
+    st.session_state.bg_app_color = "#0e1117" # Color oscuro por defecto de Streamlit
 
-# --- FUNCIONES DE NAVEGACIÓN (CALLBACKS) ---
+# --- FUNCIONES DE NAVEGACIÓN Y ESTADO (CALLBACKS) ---
 def mover_izq(v_idx):
     st.session_state.orden[v_idx], st.session_state.orden[v_idx-1] = st.session_state.orden[v_idx-1], st.session_state.orden[v_idx]
 
@@ -28,6 +30,19 @@ def mover_der(v_idx):
 
 def clear_field(key):
     st.session_state[key] = ""
+
+# --- INYECCIÓN DE CSS PARA EL BACKGROUND DE LA APP ---
+st.markdown(f"""
+    <style>
+    .stApp {{
+        background-color: {st.session_state.bg_app_color};
+    }}
+    /* Ajuste para que los textos sean legibles si el fondo es claro */
+    .stApp {{
+        color: {"#31333F" if int(st.session_state.bg_app_color.lstrip('#'), 16) > 0x888888 else "#FFFFFF"};
+    }}
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- FUNCIONES GRÁFICAS ---
 def generar_paleta_analoga():
@@ -197,7 +212,7 @@ def generar_collage(datos_imagenes, logo_img, ruta_fuente, offset_y_texto, offse
 
     return lienzo
 
-# --- INTERFAZ DE USUARIO STREAMLIT ---
+# --- INTERFAZ DE USUARIO ---
 st.title("Generador de Composiciones")
 
 dir_fuentes = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fuentes")
@@ -218,10 +233,9 @@ with col_up3: img3_file = st.file_uploader("Archivo 3", type=['jpg', 'jpeg', 'pn
 
 if img1_file and img2_file and img3_file:
     st.divider()
-    st.write("### 2. Orden y Ubicaciones")
+    st.write("### 2. Edición de Datos y Orden")
     archivos = [img1_file, img2_file, img3_file]
     
-    # Lógica de detección de nuevos archivos para inicializar estados solo cuando cambian los archivos
     current_files_hash = "".join([f.name for f in archivos])
     if st.session_state.last_files_hash != current_files_hash:
         for i, f in enumerate(archivos):
@@ -241,12 +255,13 @@ if img1_file and img2_file and img3_file:
         with cols_preview[visual_idx]:
             st.image(miniaturas[real_idx], use_container_width=True)
             
-            # --- INPUT NOMBRE (ARCHIVO) ---
+            # --- INPUT NOMBRE (EDITABLE) ---
             st.markdown("**Nombre / Archivo**")
             c_name, c_trash_name = st.columns([0.78, 0.22], vertical_alignment="bottom")
             with c_name:
                 st.text_input("Nombre", key=f"input_nombre_{real_idx}", label_visibility="collapsed").strip()
             with c_trash_name:
+                # Usamos on_click para asegurar el borrado del estado
                 st.button("🗑️", key=f"clear_name_{real_idx}", on_click=clear_field, args=(f"input_nombre_{real_idx}",))
 
             # --- INPUT INFO EXTRA ---
@@ -268,7 +283,7 @@ if img1_file and img2_file and img3_file:
                     st.button("Mover ▶", key=f"btn_der_{real_idx}", on_click=mover_der, args=(visual_idx,), use_container_width=True)
 
     st.divider()
-    st.write("### 3. Opciones Adicionales")
+    st.write("### 3. Ajustes Visuales de la Composición")
     logo_upload = st.file_uploader("Logotipo (Opcional)", type=['jpg', 'jpeg', 'png'])
     
     c_opc1, c_opc2, c_opc3 = st.columns(3)
@@ -277,16 +292,17 @@ if img1_file and img2_file and img3_file:
         offset_fotos = st.slider("Posición Y fotos (px)", -200, 200, 0, step=2)
         extra_tamano_texto = st.slider("Aumento fuente (px)", 0, 40, 0, step=2) 
     with c_opc2:
-        tamano_logo = st.slider("Tamaño Logo (px)", 50, 500, 260, step=10)
-        usar_aleatorio = st.checkbox("Paleta aleatoria")
-        aplicar_marco = st.checkbox("Marco fotos")
+        tamano_logo = st.slider("Tamaño Logo (px)", 50, 800, 260, step=10)
+        st.session_state.bg_app_color = st.color_picker("Color de fondo de la APP", st.session_state.bg_app_color)
+        usar_aleatorio = st.checkbox("Paleta de fondo aleatoria")
     with c_opc3:
+        aplicar_marco = st.checkbox("Aplicar marco a fotos")
         estilo_marco = st.selectbox("Patrón", ["Sólido", "Punteado", "Discontinuo"], disabled=not aplicar_marco)
-        grosor_marco = st.slider("Grosor (px)", 1, 10, 1, disabled=not aplicar_marco)
-        color_marco = st.color_picker("Color", "#FFFFFF", disabled=not aplicar_marco)
+        grosor_marco = st.slider("Grosor (px)", 1, 15, 1, disabled=not aplicar_marco)
+        color_marco = st.color_picker("Color del marco", "#FFFFFF", disabled=not aplicar_marco)
 
     if st.button("Generar Composición", type="primary", use_container_width=True):
-        with st.spinner("Pintando el lienzo digital..."):
+        with st.spinner("Pintando tu obra maestra..."):
             try:
                 datos_brutos = []
                 for r_idx in range(3):
@@ -328,4 +344,4 @@ if img1_file and img2_file and img3_file:
         st.image(st.session_state.img_final, use_container_width=True)
         st.download_button("Descargar Composición", st.session_state.img_bytes, "composicion.jpeg", "image/jpeg", use_container_width=True)
 else:
-    st.info("Sube las tres fotos para empezar a componer...")
+    st.info("Sube las tres fotos en la sección superior para habilitar el generador.")
